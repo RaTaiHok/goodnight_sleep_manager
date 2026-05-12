@@ -1,0 +1,4 @@
+{
+  "name": "Goodnight Sleep Manager",
+  "description": "When the bot says goodnight or decides to sleep at an appropriate time, it enters a temporary sleep state and pauses inbound messages, expression learning, planner results, and outbound messages."
+}

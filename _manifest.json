@@ -1,0 +1,40 @@
+{
+  "manifest_version": 2,
+  "version": "0.0.1",
+  "name": "晚安睡眠管理",
+  "description": "当 Bot 在合适时间主动说出晚安或准备睡觉时，进入临时睡眠状态，并在睡眠期间暂停新消息、表达学习、Planner 结果和出站消息",
+  "author": {
+    "name": "Neko_RTHsama",
+    "url": "https://github.com/RaTaiHok"
+  },
+  "license": "GPL-v3.0-or-later",
+  "urls": {
+    "repository": "https://github.com/RaTaiHok/goodnight_sleep_manager",
+    "homepage": "https://github.com/RaTaiHok/goodnight_sleep_manager",
+    "documentation": "https://github.com/RaTaiHok/goodnight_sleep_manager",
+    "issues": "https://github.com/RaTaiHok/goodnight_sleep_manager/issues"
+  },
+  "host_application": {
+    "min_version": "1.0.0",
+    "max_version": "1.0.0"
+  },
+  "sdk": {
+    "min_version": "2.4.0",
+    "max_version": "2.99.99"
+  },
+  "dependencies": [],
+  "capabilities": [
+    "send.text",
+    "llm.generate",
+    "config.get"
+  ],
+  "i18n": {
+    "default_locale": "zh-CN",
+    "locales_path": "i18n",
+    "supported_locales": [
+      "zh-CN",
+      "en-US"
+    ]
+  },
+  "id": "local.goodnight-sleep-manager"
+}
