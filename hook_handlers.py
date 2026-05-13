@@ -74,6 +74,7 @@ class SleepHookHandlersMixin:
                 return None
             return self._abort_result("睡眠中，出站消息已在构建后拦截")
 
+        self._mark_sleep_activity(message)
         text = self._extract_text(message, processed_plain_text)
         now = datetime.now()
         if not self._is_inside_sleep_window(now, message):
@@ -102,6 +103,10 @@ class SleepHookHandlersMixin:
 
         del kwargs
 
+        if self._wake_from_sleeping_mention_if_needed(message):
+            return None
+
+        self._mark_inbound_sleep_activity(message)
         if not self._should_block_inbound(message):
             return None
         self._capture_sleep_review_message(message)
@@ -220,6 +225,7 @@ class SleepHookHandlersMixin:
         """睡眠期间清空 Planner 响应，避免后续动作继续执行"""
 
         if not self._should_control_planner(kwargs.get("session_id")):
+            self._mark_planner_sleep_activity(kwargs.get("session_id"), kwargs.get("tool_calls"))
             return None
 
         modified_kwargs = dict(kwargs)

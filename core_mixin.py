@@ -38,11 +38,13 @@ class SleepCoreMixin:
     """为插件主体提供睡眠状态与判断逻辑"""
 
     _state: SleepState
+    _idle_sleep_task: asyncio.Task | None
 
     def _init_sleep_state(self) -> None:
         """初始化插件内存状态"""
 
         self._state = SleepState()
+        self._idle_sleep_task = None
 
     def _enabled(self) -> bool:
         """返回插件是否启用"""
@@ -163,6 +165,124 @@ class SleepCoreMixin:
             return
 
         self._clear_sleep_state_storage()
+
+    def _start_idle_sleep_task(self) -> None:
+        """按配置启动静默入睡后台检查任务"""
+
+        if not self._enabled() or not self.config.idle_sleep.enabled:
+            return
+        if self._idle_sleep_task is not None and not self._idle_sleep_task.done():
+            return
+
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            self._get_logger().warning("无法启动静默入睡检查：当前没有运行中的事件循环")
+            return
+
+        self._idle_sleep_task = loop.create_task(self._idle_sleep_loop(), name="goodnight_idle_sleep_checker")
+
+    async def _stop_idle_sleep_task(self) -> None:
+        """停止静默入睡后台检查任务"""
+
+        task = self._idle_sleep_task
+        self._idle_sleep_task = None
+        if task is None or task.done():
+            return
+
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            return
+        except Exception as exc:
+            self._get_logger().warning(f"停止静默入睡检查任务时出现异常: {exc}")
+
+    async def _restart_idle_sleep_task(self) -> None:
+        """根据最新配置重启静默入睡后台检查任务"""
+
+        await self._stop_idle_sleep_task()
+        self._start_idle_sleep_task()
+
+    async def _idle_sleep_loop(self) -> None:
+        """定期检查各睡眠作用域是否已经安静到可以自动入睡"""
+
+        while True:
+            try:
+                self._check_idle_sleep_once()
+            except Exception as exc:
+                self._get_logger().warning(f"静默入睡检查失败: {exc}")
+
+            await asyncio.sleep(self._idle_sleep_check_interval_seconds())
+
+    def _idle_sleep_check_interval_seconds(self) -> int:
+        """返回静默入睡后台检查间隔"""
+
+        return max(5, int(self.config.idle_sleep.check_interval_seconds))
+
+    def _check_idle_sleep_once(self) -> None:
+        """检查是否存在长时间安静且已进入入睡窗口的作用域"""
+
+        if not self._enabled() or not self.config.idle_sleep.enabled:
+            return
+
+        self._prune_expired_sleep_records()
+        now = datetime.now()
+        now_monotonic = monotonic()
+        idle_minutes = max(1, int(self.config.idle_sleep.idle_minutes))
+        idle_seconds = idle_minutes * 60
+
+        for scope_key, scope_label, message in self._iter_idle_sleep_scopes():
+            if self._is_sleeping(scope_key=scope_key):
+                continue
+
+            if not self._is_inside_sleep_window(now, message):
+                self._state.last_activity_by_scope[scope_key] = now_monotonic
+                continue
+
+            last_activity = self._state.last_activity_by_scope.get(scope_key)
+            if last_activity is None:
+                self._state.last_activity_by_scope[scope_key] = now_monotonic
+                continue
+            if now_monotonic - last_activity < idle_seconds:
+                continue
+
+            sleep_until = self._choose_sleep_until(now, message)
+            self._enter_sleep(sleep_until, f"静默 {idle_minutes} 分钟自动入睡", message)
+            self._state.last_activity_by_scope[scope_key] = now_monotonic
+            self._get_logger().info(f"静默入睡已触发: scope={scope_label} idle_minutes={idle_minutes}")
+
+    def _iter_idle_sleep_scopes(self) -> list[tuple[str, str, dict[str, Any] | None]]:
+        """返回需要静默检查的全局和分群睡眠作用域"""
+
+        scopes: list[tuple[str, str, dict[str, Any] | None]] = [(GLOBAL_SLEEP_SCOPE, "全局配置", None)]
+        seen_scope_keys = {GLOBAL_SLEEP_SCOPE}
+
+        for group_schedule in self.config.group_schedule.group_schedules:
+            if not group_schedule.enabled:
+                continue
+            group_id = group_schedule.group_id.strip()
+            if not group_id:
+                continue
+
+            scope_key, scope_label = self._sleep_scope_for_group_id(group_id)
+            if scope_key in seen_scope_keys:
+                continue
+            scopes.append((scope_key, scope_label, self._message_stub_for_command("", group_id)))
+            seen_scope_keys.add(scope_key)
+
+        return scopes
+
+    def _mark_sleep_activity(self, message: dict[str, Any]) -> None:
+        """记录当前作用域最近一次活跃时间，用于静默入睡判断"""
+
+        if not self._enabled() or not self.config.idle_sleep.enabled:
+            return
+        if self._is_sleeping(message):
+            return
+
+        scope_key, _ = self._sleep_scope_for_message(message)
+        self._state.last_activity_by_scope[scope_key] = monotonic()
 
     def _active_sleep_record(
         self,

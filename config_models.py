@@ -20,7 +20,7 @@ class PluginSectionConfig(PluginConfigBase):
     __ui_order__ = 0
 
     enabled: bool = Field(default=True, description="是否启用晚安睡眠管理")
-    config_version: str = Field(default="1.6.0", description="配置版本")
+    config_version: str = Field(default="1.7.0", description="配置版本")
 
 
 class TriggerConfig(PluginConfigBase):
@@ -81,6 +81,32 @@ class ScheduleConfig(PluginConfigBase):
     wake_jitter_minutes: int = Field(default=35, description="醒来时间随机浮动分钟数")
 
 
+class IdleSleepConfig(PluginConfigBase):
+    """长时间安静后的自动入睡配置"""
+
+    __ui_label__ = "静默入睡"
+    __ui_icon__ = "timer"
+    __ui_order__ = 4
+
+    enabled: bool = Field(default=False, description="允许在入睡时间内长时间安静后自动进入睡眠")
+    silence_minutes: int = Field(default=15, description="入睡时间内完全没有入站和出站消息多少分钟后自动入睡")
+    idle_minutes: int = Field(default=15, description="入睡时间内 Bot 连续多少分钟没有参与后自动入睡")
+    check_interval_seconds: int = Field(default=60, description="后台检查安静状态的间隔秒数")
+    topic_grace_seconds: int = Field(default=90, description="临近无参与入睡时，新话题进入 Planner 判断的缓冲秒数")
+    mention_extends_grace: bool = Field(default=True, description="被提及时延长临睡前判断缓冲")
+    at_extends_grace: bool = Field(default=True, description="被 @ 时延长临睡前判断缓冲")
+    wake_on_mention_while_sleeping: bool = Field(default=False, description="睡眠期间被提及或 @ 时是否自动唤醒")
+    inbound_grace_seconds: int = Field(default=180, description="兼容旧配置；请改用 topic_grace_seconds")
+    count_inbound_messages_as_activity: bool = Field(
+        default=False,
+        description="兼容旧配置；入站消息始终只用于完全安静计时，不再影响无参与计时",
+    )
+    count_planner_actions_as_activity: bool = Field(
+        default=True,
+        description="是否把 Planner 的有效动作视为 Bot 参与；no_action/finish/wait/continue 不会刷新无参与计时",
+    )
+
+
 class GroupScheduleEntryConfig(PluginConfigBase):
     """单个群聊的睡眠时间覆盖配置。"""
 
@@ -99,8 +125,12 @@ class GroupScheduleConfig(PluginConfigBase):
 
     __ui_label__ = "分群作息"
     __ui_icon__ = "users"
-    __ui_order__ = 4
+    __ui_order__ = 5
 
+    independent_default_scopes: bool = Field(
+        default=True,
+        description="未配置分群作息的群聊和私聊也使用独立睡眠状态；关闭时才共用全局睡眠状态",
+    )
     group_schedules: List[GroupScheduleEntryConfig] = Field(
         default_factory=list,
         description="按群号覆盖全局作息；命中群号时优先使用这里的时间配置和独立睡眠状态",
@@ -112,7 +142,7 @@ class SleepControlConfig(PluginConfigBase):
 
     __ui_label__ = "拦截"
     __ui_icon__ = "shield"
-    __ui_order__ = 5
+    __ui_order__ = 6
 
     block_inbound_messages: bool = Field(default=True, description="睡眠期间拦截入站消息主链路")
     block_expression_learning: bool = Field(default=True, description="睡眠期间暂停表达学习写入")
@@ -130,7 +160,7 @@ class SleepReviewConfig(PluginConfigBase):
 
     __ui_label__ = "睡醒回顾"
     __ui_icon__ = "book-open"
-    __ui_order__ = 6
+    __ui_order__ = 7
 
     enabled: bool = Field(default=False, description="醒来后按聊天流总结睡眠期间被拦截的消息")
     max_summary_messages_per_chat: int = Field(default=80, description="每个聊天流最多送入总结模型的消息条数")
@@ -146,6 +176,7 @@ class GoodnightSleepManagerConfig(PluginConfigBase):
     trigger: TriggerConfig = Field(default_factory=TriggerConfig)
     sleep_request: SleepRequestConfig = Field(default_factory=SleepRequestConfig)
     schedule: ScheduleConfig = Field(default_factory=ScheduleConfig)
+    idle_sleep: IdleSleepConfig = Field(default_factory=IdleSleepConfig)
     group_schedule: GroupScheduleConfig = Field(default_factory=GroupScheduleConfig)
     control: SleepControlConfig = Field(default_factory=SleepControlConfig)
     sleep_review: SleepReviewConfig = Field(default_factory=SleepReviewConfig)

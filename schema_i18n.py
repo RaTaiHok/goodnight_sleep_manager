@@ -15,6 +15,7 @@ SECTION_TITLES: dict[str, LocalizedText] = {
     "trigger": {"zh_CN": "触发", "en_US": "Trigger"},
     "sleep_request": {"zh_CN": "催睡", "en_US": "Sleep Request"},
     "schedule": {"zh_CN": "作息", "en_US": "Schedule"},
+    "idle_sleep": {"zh_CN": "静默入睡", "en_US": "Idle Sleep"},
     "group_schedule": {"zh_CN": "分群作息", "en_US": "Group Schedule"},
     "control": {"zh_CN": "拦截", "en_US": "Control"},
     "sleep_review": {"zh_CN": "睡醒回顾", "en_US": "Sleep Review"},
@@ -25,6 +26,10 @@ SECTION_DESCRIPTIONS: dict[str, LocalizedText] = {
     "trigger": {"zh_CN": "Bot 自己确认入睡时使用的语义判定规则", "en_US": "Semantic rules used when the bot confirms sleep by itself."},
     "sleep_request": {"zh_CN": "用户建议 Bot 睡觉时的处理方式", "en_US": "How to handle user messages suggesting the bot should sleep."},
     "schedule": {"zh_CN": "允许入睡和醒来的时间计算", "en_US": "Sleep window and wake-up time calculation."},
+    "idle_sleep": {
+        "zh_CN": "在允许入睡时间内长时间安静后自动进入睡眠",
+        "en_US": "Automatically enter sleep after a quiet period during the sleep window.",
+    },
     "group_schedule": {
         "zh_CN": "按群号覆盖全局作息，命中时使用独立睡眠状态",
         "en_US": "Override the global schedule by group ID and use independent sleep state.",
@@ -54,6 +59,25 @@ FIELD_LABELS: dict[tuple[str, str], LocalizedText] = {
     ("schedule", "min_sleep_minutes"): {"zh_CN": "最短睡眠分钟", "en_US": "Minimum sleep minutes"},
     ("schedule", "max_sleep_minutes"): {"zh_CN": "最长睡眠分钟", "en_US": "Maximum sleep minutes"},
     ("schedule", "wake_jitter_minutes"): {"zh_CN": "醒来随机浮动", "en_US": "Wake jitter minutes"},
+    ("idle_sleep", "enabled"): {"zh_CN": "启用静默入睡", "en_US": "Enable idle sleep"},
+    ("idle_sleep", "silence_minutes"): {"zh_CN": "完全安静入睡分钟", "en_US": "Silent minutes before sleep"},
+    ("idle_sleep", "idle_minutes"): {"zh_CN": "无参与入睡分钟", "en_US": "No-participation minutes before sleep"},
+    ("idle_sleep", "check_interval_seconds"): {"zh_CN": "检查间隔秒", "en_US": "Check interval seconds"},
+    ("idle_sleep", "topic_grace_seconds"): {"zh_CN": "话题判断缓冲秒", "en_US": "Topic grace seconds"},
+    ("idle_sleep", "mention_extends_grace"): {"zh_CN": "提及延长缓冲", "en_US": "Mention extends grace"},
+    ("idle_sleep", "at_extends_grace"): {"zh_CN": "@ 延长缓冲", "en_US": "@ extends grace"},
+    ("idle_sleep", "wake_on_mention_while_sleeping"): {
+        "zh_CN": "睡眠中提及唤醒",
+        "en_US": "Wake on mention while sleeping",
+    },
+    ("idle_sleep", "count_planner_actions_as_activity"): {
+        "zh_CN": "Planner 动作算参与",
+        "en_US": "Count planner actions as participation",
+    },
+    ("group_schedule", "independent_default_scopes"): {
+        "zh_CN": "默认聊天流独立睡眠",
+        "en_US": "Independent default chat sleep",
+    },
     ("group_schedule", "group_schedules"): {"zh_CN": "群作息覆盖", "en_US": "Group schedule overrides"},
     ("control", "block_inbound_messages"): {"zh_CN": "暂停入站消息", "en_US": "Block inbound messages"},
     ("control", "block_expression_learning"): {"zh_CN": "暂停表达学习", "en_US": "Block expression learning"},
@@ -98,6 +122,46 @@ FIELD_HINTS: dict[tuple[str, str], LocalizedText] = {
     ("group_schedule", "group_schedules"): {
         "zh_CN": "同一群号命中后使用这里的作息和睡眠时长，并拥有独立睡眠状态，不受全局睡眠影响",
         "en_US": "When a group ID matches, this schedule and duration override the global Schedule section and use an independent sleep state.",
+    },
+    ("group_schedule", "independent_default_scopes"): {
+        "zh_CN": "默认开启。未配置分群作息的群聊和私聊仍共用全局作息时间，但各自维护睡眠状态和静默计时；关闭后恢复旧逻辑，所有默认聊天流共用全局睡眠状态",
+        "en_US": "Enabled by default. Chats without a group override still use the global schedule, but keep independent sleep state and idle timers. Disable to restore the old shared global sleep state.",
+    },
+    ("idle_sleep", "enabled"): {
+        "zh_CN": "默认关闭。开启后不会调用模型，只按最近活动和 Bot 参与时间判断；进入睡眠时也不会主动补发晚安消息",
+        "en_US": "Disabled by default. When enabled, this uses only recent activity time and does not call a model or send an extra goodnight message.",
+    },
+    ("idle_sleep", "silence_minutes"): {
+        "zh_CN": "进入允许入睡时间后，对应作用域完全没有入站消息和出站消息达到这么久，就自动进入睡眠",
+        "en_US": "After the sleep window starts, automatically sleep when the matching scope has no inbound or outbound messages for this long.",
+    },
+    ("idle_sleep", "idle_minutes"): {
+        "zh_CN": "进入允许入睡时间后，Bot 连续这么久没有出站或有效 Planner 动作，就自动进入睡眠；群里有人聊天但 Bot 没参与也会继续累计",
+        "en_US": "After the sleep window starts, automatically sleep when the bot has no outbound messages or active planner actions for this long. Other users chatting without bot participation keeps counting.",
+    },
+    ("idle_sleep", "check_interval_seconds"): {
+        "zh_CN": "后台检查频率。数值越小越及时，但检查更频繁；该检查不消耗 LLM token",
+        "en_US": "Background check frequency. Lower values react sooner but check more often; this check does not use LLM tokens.",
+    },
+    ("idle_sleep", "topic_grace_seconds"): {
+        "zh_CN": "无参与计时临近入睡时，新入站消息会获得一次判断缓冲，避免刚出现新话题就被后台检查切入睡眠；普通消息每个无参与周期只给一次缓冲",
+        "en_US": "When the no-participation timer is near sleep, a new inbound message gets one short grace window so the planner can judge the topic. Ordinary messages get one grace per no-participation cycle.",
+    },
+    ("idle_sleep", "mention_extends_grace"): {
+        "zh_CN": "开启后，被文字提及时会延长临睡前判断缓冲，让 Planner 有机会响应直接呼唤",
+        "en_US": "When enabled, text mentions extend the pre-sleep grace window so the planner can respond to direct calls.",
+    },
+    ("idle_sleep", "at_extends_grace"): {
+        "zh_CN": "开启后，被 @ 时会延长临睡前判断缓冲；适合启用了 @ 必回复的场景",
+        "en_US": "When enabled, @ mentions extend the pre-sleep grace window. Useful when @-must-reply is enabled.",
+    },
+    ("idle_sleep", "wake_on_mention_while_sleeping"): {
+        "zh_CN": "默认关闭。开启后，睡眠期间被提及或 @ 会先唤醒再放行这条消息；关闭时会像普通睡眠消息一样拦截并可进入睡醒回顾",
+        "en_US": "Disabled by default. When enabled, a mention or @ while sleeping wakes the bot and lets the message pass. Otherwise it is blocked like normal sleep messages and may be reviewed after waking.",
+    },
+    ("idle_sleep", "count_planner_actions_as_activity"): {
+        "zh_CN": "开启后，Planner 调用 reply、send_emoji 或其他有效动作时会刷新无参与计时；no_action/no_reply/no_react/no_plan/finish/wait/continue 不算参与",
+        "en_US": "When enabled, planner actions such as reply, send_emoji, or other active tools reset the no-participation timer; no_action/no_reply/no_react/no_plan/finish/wait/continue do not count.",
     },
     ("control", "persist_sleep_state"): {
         "zh_CN": "开启后会把未过期的睡眠状态保存到 data/plugins/goodnight_sleep_manager/sleep_state.json",
@@ -144,6 +208,8 @@ HIDDEN_VISUAL_FIELDS: set[tuple[str, str]] = {
     ("trigger", "directed_patterns"),
     ("trigger", "max_trigger_chars"),
     ("sleep_request", "request_patterns"),
+    ("idle_sleep", "count_inbound_messages_as_activity"),
+    ("idle_sleep", "inbound_grace_seconds"),
 }
 
 SLEEP_REVIEW_LIMIT_FIELDS: set[str] = {
@@ -151,6 +217,13 @@ SLEEP_REVIEW_LIMIT_FIELDS: set[str] = {
     "max_summary_chars_per_chat",
     "max_review_chats_per_wake",
     "max_summary_tokens",
+}
+
+IDLE_SLEEP_LIMIT_FIELDS: set[str] = {
+    "silence_minutes",
+    "idle_minutes",
+    "check_interval_seconds",
+    "topic_grace_seconds",
 }
 
 
@@ -182,6 +255,9 @@ def apply_config_schema_i18n(schema: dict[str, Any]) -> dict[str, Any]:
                 field["hint"] = _resolve_text(FIELD_HINTS[key])
             if key in HIDDEN_VISUAL_FIELDS:
                 field["hidden"] = True
+            if section_name == "idle_sleep" and field_name in IDLE_SLEEP_LIMIT_FIELDS:
+                field["min"] = 1
+                field["step"] = 1
             if section_name == "sleep_review" and field_name in SLEEP_REVIEW_LIMIT_FIELDS:
                 field["min"] = 1
                 field["step"] = 1

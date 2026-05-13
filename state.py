@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 
 @dataclass
@@ -24,6 +24,11 @@ class SleepState:
     """插件运行期状态"""
 
     sleep_records: Dict[str, SleepRecord] = field(default_factory=dict)
+    last_any_activity_by_scope: Dict[str, float] = field(default_factory=dict)
+    last_bot_activity_by_scope: Dict[str, float] = field(default_factory=dict)
+    topic_grace_until_by_scope: Dict[str, float] = field(default_factory=dict)
+    topic_grace_used_by_scope: Dict[str, bool] = field(default_factory=dict)
+    idle_scope_messages: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     control_reply_allowed_until: float = 0.0
     pending_sleep_request_until: float = 0.0
     pending_sleep_request_session_id: str = ""
