@@ -2,6 +2,7 @@
 
 from typing import Any
 
+import asyncio
 import re
 
 from .message_utils import normalize_text
@@ -46,6 +47,8 @@ async def judge_sleep_confirmation(
     has_pending_request: bool,
     schedule_context: str = "",
     outbound_context: str = "",
+    timeout_seconds: int = 4,
+    max_tokens: int = 64,
 ) -> str:
     """让 LLM 判断当前回复是否表达 Bot 自己要去睡觉"""
 
@@ -80,8 +83,17 @@ async def judge_sleep_confirmation(
         },
     ]
 
+    safe_timeout_seconds = max(0, int(timeout_seconds or 0))
+    safe_max_tokens = max(16, int(max_tokens or 64))
     try:
-        result = await ctx.llm.generate(prompt, model="replyer", temperature=0.0, max_tokens=12)
+        generate_task = ctx.llm.generate(prompt, model="replyer", temperature=0.0, max_tokens=safe_max_tokens)
+        if safe_timeout_seconds > 0:
+            result = await asyncio.wait_for(generate_task, timeout=float(safe_timeout_seconds))
+        else:
+            result = await generate_task
+    except asyncio.TimeoutError:
+        ctx.logger.warning(f"AI 入睡确认判定超时: timeout={safe_timeout_seconds}s")
+        return UNSURE_DECISION
     except Exception as exc:
         ctx.logger.warning(f"AI 入睡确认判定失败: {exc}")
         return UNSURE_DECISION

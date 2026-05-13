@@ -85,6 +85,8 @@ class SleepCoreMixin:
             session_id=session_id,
         )
         self._state.sleep_records[scope_key] = record
+        if session_id.strip():
+            self._state.session_scope_keys[session_id.strip()] = scope_key
         self._clear_pending_sleep_request()
         self._save_sleep_state()
         self._get_logger().info(
@@ -103,6 +105,21 @@ class SleepCoreMixin:
         if record is not None:
             self._get_logger().info(f"晚安睡眠管理已唤醒: scope={record.scope_label} reason={reason}")
             self._schedule_sleep_review(record)
+
+    def _wake_all_sleep_records(self, reason: str) -> int:
+        """清理全部睡眠记录，用于全体强制入睡前消除叠加状态。"""
+
+        records = list(self._state.sleep_records.items())
+        if not records:
+            return 0
+
+        for scope_key, record in records:
+            self._state.clear_sleep(scope_key)
+            self._get_logger().info(f"晚安睡眠管理已唤醒: scope={record.scope_label} reason={reason}")
+            self._schedule_sleep_review(record)
+        self._clear_pending_sleep_request()
+        self._save_sleep_state()
+        return len(records)
 
     def _restore_sleep_state(self) -> None:
         """插件加载时从持久化文件恢复未过期的睡眠状态"""
@@ -127,6 +144,8 @@ class SleepCoreMixin:
             if record.sleep_until is None or now >= record.sleep_until:
                 continue
             self._state.sleep_records[scope_key] = record
+            if record.session_id.strip():
+                self._state.session_scope_keys[record.session_id.strip()] = scope_key
             restored_count += 1
             self._get_logger().info(
                 f"已恢复持久化睡眠状态，作用域: {record.scope_label}，"
@@ -497,9 +516,16 @@ class SleepCoreMixin:
         target_scope_key = scope_key.strip()
         if not target_scope_key:
             if message is not None:
-                target_scope_key = self._sleep_scope_for_message(message)[0]
+                normalized_session_id = message_session_id(message).strip()
+                if normalized_session_id:
+                    target_scope_key = self._state.session_scope_keys.get(normalized_session_id, "")
+                if not target_scope_key:
+                    target_scope_key = self._sleep_scope_for_message(message)[0]
             elif session_id.strip():
-                target_scope_key = self._sleep_scope_for_session_id(session_id)[0]
+                normalized_session_id = session_id.strip()
+                target_scope_key = self._state.session_scope_keys.get(normalized_session_id, "")
+                if not target_scope_key:
+                    target_scope_key = self._sleep_scope_for_session_id(normalized_session_id)[0]
             else:
                 self._prune_expired_sleep_records()
                 return next(iter(self._state.sleep_records.values()), None)
@@ -653,6 +679,12 @@ class SleepCoreMixin:
         """判断是否需要启用 Planner 兜底保护"""
 
         normalized_session_id = str(session_id or "").strip()
+        if not normalized_session_id:
+            return (
+                self._enabled()
+                and self.config.control.planner_control_enabled
+                and self._is_sleeping(scope_key=ALL_SLEEP_SCOPE)
+            )
         return (
             self._enabled()
             and self.config.control.planner_control_enabled
@@ -703,6 +735,8 @@ class SleepCoreMixin:
                 has_pending_request=has_pending_request,
                 schedule_context=self._build_sleep_confirmation_schedule_context(message),
                 outbound_context=self._build_sleep_confirmation_outbound_context(message, set_reply=set_reply),
+                timeout_seconds=self.config.trigger.ai_confirmation_timeout_seconds,
+                max_tokens=self.config.trigger.ai_confirmation_max_tokens,
             )
             if decision == SLEEP_DECISION:
                 self._get_logger().info(f"AI 入睡确认判定触发: text={normalized_text}")
@@ -985,7 +1019,7 @@ class SleepCoreMixin:
 
         pending_session_id = self._state.pending_sleep_request_session_id
         if not pending_session_id:
-            return True
+            return False
         return isinstance(session_id, str) and session_id == pending_session_id
 
     def _is_control_command(self, message: dict[str, Any]) -> bool:

@@ -25,7 +25,7 @@ class SleepCommandHandlersMixin:
         self._allow_control_reply()
         command_message = self._message_stub_for_command(stream_id, group_id)
         scope_key, scope_label = self._sleep_scope_for_message(command_message)
-        sleep_record = self._active_sleep_record(scope_key=scope_key)
+        sleep_record = self._active_sleep_record(message=command_message)
         if sleep_record is not None and sleep_record.sleep_until is not None:
             message = (
                 "[睡眠管理] 当前正在睡眠\n"
@@ -57,9 +57,10 @@ class SleepCommandHandlersMixin:
         self._allow_control_reply()
         command_message = self._message_stub_for_command(stream_id, group_id)
         scope_key, scope_label = self._sleep_scope_for_message(command_message)
-        if self._is_sleeping(scope_key=scope_key):
-            self._wake("手动唤醒", scope_key=scope_key)
-            message = f"[睡眠管理] 已手动唤醒\n作用域: {scope_label}"
+        sleep_record = self._active_sleep_record(message=command_message)
+        if sleep_record is not None:
+            self._wake("手动唤醒", scope_key=sleep_record.scope_key)
+            message = f"[睡眠管理] 已手动唤醒\n作用域: {sleep_record.scope_label}"
         else:
             message = f"[睡眠管理] 当前本来就是醒着\n作用域: {scope_label}"
         await self.ctx.send.text(message, stream_id)
@@ -194,6 +195,7 @@ class SleepCommandHandlersMixin:
             return True, message, True
 
         now = datetime.now()
+        replaced_count = self._wake_all_sleep_records("/sleep_forceall 覆盖已有睡眠状态") if force_all else 0
         _, schedule_source = (
             (self.config.schedule, "全局配置")
             if force_all
@@ -213,5 +215,7 @@ class SleepCommandHandlersMixin:
             f"生效作息: {schedule_source}\n"
             f"预计醒来时间: {self._format_datetime(sleep_until)}"
         )
+        if replaced_count:
+            message = f"{message}\n已覆盖原有睡眠作用域: {replaced_count} 个"
         await self.ctx.send.text(message, stream_id)
         return True, message, True

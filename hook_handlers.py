@@ -8,6 +8,31 @@ from maibot_sdk.types import HookMode, HookOrder
 
 
 MEMORY_AUTOMATION_HOOK = "memory.automation.before_enqueue"
+TIMING_GATE_TOOL_NAMES = {"continue", "no_action", "wait"}
+
+
+def _extract_hook_tool_name(raw_item: Any) -> str:
+    """从 Hook 工具定义或工具调用载荷中提取工具名"""
+
+    if not isinstance(raw_item, dict):
+        return ""
+
+    raw_name = raw_item.get("name") or raw_item.get("tool_name")
+    function_data = raw_item.get("function")
+    if not raw_name and isinstance(function_data, dict):
+        raw_name = function_data.get("name")
+    return str(raw_name or "").strip()
+
+
+def _only_timing_gate_tools(raw_items: Any) -> bool:
+    """判断当前 Hook 载荷是否只包含 Timing Gate 控制工具"""
+
+    if not isinstance(raw_items, list) or not raw_items:
+        return False
+
+    tool_names = {_extract_hook_tool_name(item) for item in raw_items}
+    tool_names.discard("")
+    return bool(tool_names) and tool_names.issubset(TIMING_GATE_TOOL_NAMES)
 
 
 def _memory_automation_hook_supported() -> bool:
@@ -52,6 +77,7 @@ class SleepHookHandlersMixin:
         description="检测 Bot 是否主动说出晚安或睡觉短句",
         mode=HookMode.BLOCKING,
         order=HookOrder.LATE,
+        timeout_ms=120000,
     )
     async def handle_after_build_message(
         self,
@@ -67,10 +93,11 @@ class SleepHookHandlersMixin:
         if not self._enabled():
             return None
 
+        if self._is_control_reply(message, processed_plain_text):
+            return None
+
         if self._is_sleeping(message):
             if not self.config.control.block_outbound_messages:
-                return None
-            if self._is_control_reply(message, processed_plain_text):
                 return None
             return self._abort_result("睡眠中，出站消息已在构建后拦截")
 
@@ -181,17 +208,21 @@ class SleepHookHandlersMixin:
     async def handle_planner_before_request(self, **kwargs: Any) -> dict[str, Any] | None:
         """Planner hook 不允许 abort，这里只能改写请求做兜底"""
 
+        # Timing Gate 也复用 planner hook；不能清空它的 continue/no_action/wait 控制工具
+        if _only_timing_gate_tools(kwargs.get("tool_definitions")):
+            return None
+
         if self._should_control_planner(kwargs.get("session_id")):
             modified_kwargs = dict(kwargs)
             modified_kwargs["tool_definitions"] = []
             modified_kwargs["messages"] = [
                 {
                     "role": "system",
-                    "content": "当前 Bot 正在睡眠状态。不要回复用户，不要调用任何工具，只输出空内容。",
+                    "content": "当前 Bot 正在睡眠状态。不要回复用户，不要调用任何工具，只输出 SLEEPING_NO_ACTION。",
                 },
                 {
                     "role": "user",
-                    "content": "sleep",
+                    "content": "SLEEPING_NO_ACTION",
                 },
             ]
             return {"action": "continue", "modified_kwargs": modified_kwargs}
@@ -223,6 +254,10 @@ class SleepHookHandlersMixin:
     )
     async def handle_planner_after_response(self, **kwargs: Any) -> dict[str, Any] | None:
         """睡眠期间清空 Planner 响应，避免后续动作继续执行"""
+
+        # Timing Gate 的控制结果必须原样交回主流程，否则会被误判为没有有效工具
+        if _only_timing_gate_tools(kwargs.get("tool_calls")):
+            return None
 
         if not self._should_control_planner(kwargs.get("session_id")):
             self._mark_planner_sleep_activity(kwargs.get("session_id"), kwargs.get("tool_calls"))

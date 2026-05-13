@@ -45,6 +45,8 @@ FIELD_LABELS: dict[tuple[str, str], LocalizedText] = {
     ("plugin", "enabled"): {"zh_CN": "启用插件", "en_US": "Enable plugin"},
     ("plugin", "config_version"): {"zh_CN": "配置版本", "en_US": "Config version"},
     ("trigger", "ai_confirmation_enabled"): {"zh_CN": "AI 语义入睡判定", "en_US": "AI semantic sleep judge"},
+    ("trigger", "ai_confirmation_timeout_seconds"): {"zh_CN": "AI 入睡判定超时秒", "en_US": "AI sleep judge timeout"},
+    ("trigger", "ai_confirmation_max_tokens"): {"zh_CN": "AI 入睡判定输出上限", "en_US": "AI sleep judge max tokens"},
     ("trigger", "max_trigger_chars"): {"zh_CN": "触发短句最大长度", "en_US": "Max trigger length"},
     ("trigger", "reject_at_component"): {"zh_CN": "排除 @ 消息", "en_US": "Reject @ messages"},
     ("trigger", "reject_reply_message"): {"zh_CN": "排除引用回复", "en_US": "Reject quoted replies"},
@@ -118,6 +120,14 @@ FIELD_HINTS: dict[tuple[str, str], LocalizedText] = {
     ("trigger", "ai_confirmation_enabled"): {
         "zh_CN": "开启后，在允许入睡时间内，对已有合理催睡或 Bot 自己发出含睡眠意图的短句调用 replyer 模型，只接受 SLEEP/NOT_SLEEP/UNSURE",
         "en_US": "When enabled, during the sleep window, use the replyer model for pending sleep requests or sleep-related bot messages, accepting only SLEEP/NOT_SLEEP/UNSURE.",
+    },
+    ("trigger", "ai_confirmation_timeout_seconds"): {
+        "zh_CN": "填 0 时插件内部不主动超时，会等待 LLM 自己返回；填大于 0 的秒数时，超时后按 UNSURE 处理并转入正则兜底。出站检测 Hook 为 120 秒",
+        "en_US": "Set to 0 to avoid plugin-side timeout and wait for the LLM result. Values greater than 0 are treated as seconds; timeout returns UNSURE and falls back to regex. The outbound detector hook timeout is 120 seconds.",
+    },
+    ("trigger", "ai_confirmation_max_tokens"): {
+        "zh_CN": "默认 64。过低可能导致部分模型在输出 SLEEP/NOT_SLEEP/UNSURE 前被截断并返回空内容；建议保持 64 或更高",
+        "en_US": "Default is 64. Too low may truncate some models before they output SLEEP/NOT_SLEEP/UNSURE and cause empty responses; keep 64 or higher.",
     },
     ("group_schedule", "group_schedules"): {
         "zh_CN": "同一群号命中后使用这里的作息和睡眠时长，并拥有独立睡眠状态，不受全局睡眠影响",
