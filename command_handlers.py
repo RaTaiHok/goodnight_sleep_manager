@@ -5,6 +5,8 @@ from typing import Any
 
 from maibot_sdk import Command
 
+from .core_mixin import ALL_SLEEP_SCOPE
+
 
 class SleepCommandHandlersMixin:
     """声明插件命令入口"""
@@ -135,12 +137,33 @@ class SleepCommandHandlersMixin:
             user_id=user_id,
         )
 
+    @Command("sleep_forceall", description="无视作息窗口让全部聊天流立即入睡", pattern=r"^/sleep_forceall$")
+    async def handle_sleep_forceall_command(
+        self,
+        stream_id: str = "",
+        group_id: str = "",
+        user_id: str = "",
+        **kwargs: Any,
+    ) -> tuple[bool, str, bool]:
+        """无视允许入睡窗口，手动触发全部聊天流进入睡眠"""
+
+        del kwargs
+        del group_id
+
+        return await self._handle_sleep_force_command(
+            stream_id=stream_id,
+            group_id="",
+            user_id=user_id,
+            force_all=True,
+        )
+
     async def _handle_sleep_force_command(
         self,
         *,
         stream_id: str,
         group_id: str,
         user_id: str,
+        force_all: bool = False,
     ) -> tuple[bool, str, bool]:
         """执行无视时间窗口的强制入睡命令。"""
 
@@ -156,7 +179,11 @@ class SleepCommandHandlersMixin:
             return True, message, True
 
         command_message = self._message_stub_for_command(stream_id, group_id)
-        sleep_record = self._active_sleep_record(message=command_message)
+        sleep_record = (
+            self._active_sleep_record(scope_key=ALL_SLEEP_SCOPE)
+            if force_all
+            else self._active_sleep_record(message=command_message)
+        )
         if sleep_record is not None and sleep_record.sleep_until is not None:
             message = (
                 "[睡眠管理] 当前已经在睡眠中\n"
@@ -167,15 +194,22 @@ class SleepCommandHandlersMixin:
             return True, message, True
 
         now = datetime.now()
-        _, schedule_source = self._schedule_for_message_with_source(command_message)
+        _, schedule_source = (
+            (self.config.schedule, "全局配置")
+            if force_all
+            else self._schedule_for_message_with_source(command_message)
+        )
 
-        sleep_until = self._choose_sleep_until(now, command_message)
-        reason = "/sleep_force 管理命令触发"
+        sleep_until = self._choose_sleep_until(now, None if force_all else command_message)
+        reason = "/sleep_forceall 管理命令触发" if force_all else "/sleep_force 管理命令触发"
         if user_id.strip():
             reason = f"{reason}: user={user_id.strip()}"
-        self._enter_sleep(sleep_until, reason, command_message)
+        if force_all:
+            self._enter_sleep(sleep_until, reason, None, scope_key=ALL_SLEEP_SCOPE, scope_label="全部聊天流")
+        else:
+            self._enter_sleep(sleep_until, reason, command_message)
         message = (
-            "[睡眠管理] 已进入睡眠\n"
+            f"[睡眠管理] 已进入{'全体' if force_all else ''}睡眠\n"
             f"生效作息: {schedule_source}\n"
             f"预计醒来时间: {self._format_datetime(sleep_until)}"
         )

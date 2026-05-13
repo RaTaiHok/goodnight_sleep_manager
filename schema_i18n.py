@@ -172,12 +172,12 @@ FIELD_HINTS: dict[tuple[str, str], LocalizedText] = {
         "en_US": "When enabled, new person fact and chat summary writeback jobs will not be queued while sleeping. Already running jobs are not cancelled.",
     },
     ("control", "force_sleep_commands_enabled"): {
-        "zh_CN": "开启后允许使用 /sleep_now 引导入睡，或使用 /sleep_force 强制入睡",
-        "en_US": "Enable /sleep_now and /sleep_force for testing or managing sleep state.",
+        "zh_CN": "开启后允许使用 /sleep_now 引导入睡，或使用 /sleep_force、/sleep_forceall 强制入睡",
+        "en_US": "Enable /sleep_now, /sleep_force, and /sleep_forceall for testing or managing sleep state.",
     },
     ("control", "admin_user_ids"): {
-        "zh_CN": "填写后只有这些用户 ID 可使用 /sleep_now 和 /sleep_force；留空则不限制",
-        "en_US": "When set, only these user IDs can use /sleep_now and /sleep_force. Empty means unrestricted.",
+        "zh_CN": "填写后只有这些用户 ID 可使用 /sleep_now、/sleep_force 和 /sleep_forceall；留空则不限制",
+        "en_US": "When set, only these user IDs can use /sleep_now, /sleep_force, and /sleep_forceall. Empty means unrestricted.",
     },
     ("sleep_review", "enabled"): {
         "zh_CN": "开启后，睡眠期间被拦截的消息会保存到本地；对应作用域醒来时按群聊/私聊生成回顾文件，不会向聊天流补发回复",

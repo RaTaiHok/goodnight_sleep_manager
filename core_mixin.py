@@ -22,6 +22,7 @@ from .message_utils import (
     has_reply_component,
     message_group_id,
     message_id,
+    message_mentions_bot,
     message_session_id,
     normalize_text,
 )
@@ -31,7 +32,9 @@ from .sleep_review import append_sleep_review_message, generate_sleep_review
 from .state import SleepRecord, SleepState
 from .state_storage import clear_persisted_sleep_state, load_persisted_sleep_records, save_persisted_sleep_records
 
+ALL_SLEEP_SCOPE = "all"
 GLOBAL_SLEEP_SCOPE = "global"
+QUIET_PLANNER_TOOL_NAMES = {"no_action", "no_plan", "no_react", "no_reply", "finish", "wait", "continue"}
 
 
 class SleepCoreMixin:
@@ -56,10 +59,20 @@ class SleepCoreMixin:
 
         return self._active_sleep_record(message, session_id=session_id, scope_key=scope_key) is not None
 
-    def _enter_sleep(self, sleep_until: datetime, reason: str, message: dict[str, Any] | None = None) -> SleepRecord:
+    def _enter_sleep(
+        self,
+        sleep_until: datetime,
+        reason: str,
+        message: dict[str, Any] | None = None,
+        *,
+        scope_key: str = "",
+        scope_label: str = "",
+    ) -> SleepRecord:
         """进入睡眠状态"""
 
-        scope_key, scope_label = self._sleep_scope_for_message(message)
+        resolved_scope_key, resolved_scope_label = self._sleep_scope_for_message(message)
+        scope_key = scope_key.strip() or resolved_scope_key
+        scope_label = scope_label.strip() or resolved_scope_label
         session_id = message_session_id(message) if message is not None else ""
         group_id = (message_group_id(message) if message is not None else "") or self._group_id_for_session_id(session_id)
         record = SleepRecord(
@@ -84,7 +97,7 @@ class SleepCoreMixin:
 
         target_scope_key = scope_key.strip() or self._sleep_scope_for_message(message)[0]
         record = self._active_sleep_record(scope_key=target_scope_key)
-        self._state.clear_sleep(target_scope_key)
+        self._state.clear_sleep(record.scope_key if record is not None else target_scope_key)
         self._clear_pending_sleep_request()
         self._save_sleep_state()
         if record is not None:
@@ -230,33 +243,59 @@ class SleepCoreMixin:
         now = datetime.now()
         now_monotonic = monotonic()
         idle_minutes = max(1, int(self.config.idle_sleep.idle_minutes))
+        silence_minutes = max(1, int(self.config.idle_sleep.silence_minutes))
         idle_seconds = idle_minutes * 60
+        silence_seconds = silence_minutes * 60
 
         for scope_key, scope_label, message in self._iter_idle_sleep_scopes():
             if self._is_sleeping(scope_key=scope_key):
                 continue
 
             if not self._is_inside_sleep_window(now, message):
-                self._state.last_activity_by_scope[scope_key] = now_monotonic
+                self._state.last_any_activity_by_scope[scope_key] = now_monotonic
+                self._state.last_bot_activity_by_scope[scope_key] = now_monotonic
+                self._clear_topic_grace(scope_key)
                 continue
 
-            last_activity = self._state.last_activity_by_scope.get(scope_key)
-            if last_activity is None:
-                self._state.last_activity_by_scope[scope_key] = now_monotonic
+            last_any_activity = self._state.last_any_activity_by_scope.get(scope_key)
+            last_bot_activity = self._state.last_bot_activity_by_scope.get(scope_key)
+            if last_any_activity is None or last_bot_activity is None:
+                self._state.last_any_activity_by_scope[scope_key] = now_monotonic
+                self._state.last_bot_activity_by_scope[scope_key] = now_monotonic
                 continue
-            if now_monotonic - last_activity < idle_seconds:
+
+            silence_elapsed = now_monotonic - last_any_activity
+            idle_elapsed = now_monotonic - last_bot_activity
+            if silence_elapsed >= silence_seconds:
+                sleep_reason = f"完全安静 {silence_minutes} 分钟自动入睡"
+            elif idle_elapsed >= idle_seconds:
+                if self._topic_grace_is_active(scope_key, now_monotonic):
+                    continue
+                sleep_reason = f"无参与 {idle_minutes} 分钟自动入睡"
+            else:
                 continue
 
             sleep_until = self._choose_sleep_until(now, message)
-            self._enter_sleep(sleep_until, f"静默 {idle_minutes} 分钟自动入睡", message)
-            self._state.last_activity_by_scope[scope_key] = now_monotonic
-            self._get_logger().info(f"静默入睡已触发: scope={scope_label} idle_minutes={idle_minutes}")
+            self._enter_sleep(sleep_until, sleep_reason, message)
+            self._state.last_any_activity_by_scope[scope_key] = now_monotonic
+            self._state.last_bot_activity_by_scope[scope_key] = now_monotonic
+            self._clear_topic_grace(scope_key)
+            self._get_logger().info(f"静默入睡已触发: scope={scope_label} reason={sleep_reason}")
 
     def _iter_idle_sleep_scopes(self) -> list[tuple[str, str, dict[str, Any] | None]]:
         """返回需要静默检查的全局和分群睡眠作用域"""
 
-        scopes: list[tuple[str, str, dict[str, Any] | None]] = [(GLOBAL_SLEEP_SCOPE, "全局配置", None)]
-        seen_scope_keys = {GLOBAL_SLEEP_SCOPE}
+        scopes: list[tuple[str, str, dict[str, Any] | None]] = []
+        seen_scope_keys: set[str] = set()
+
+        def add_scope(scope_key: str, scope_label: str, message: dict[str, Any] | None) -> None:
+            if scope_key in seen_scope_keys:
+                return
+            scopes.append((scope_key, scope_label, message))
+            seen_scope_keys.add(scope_key)
+
+        if not self._default_chat_scopes_are_independent():
+            add_scope(GLOBAL_SLEEP_SCOPE, "全局配置", None)
 
         for group_schedule in self.config.group_schedule.group_schedules:
             if not group_schedule.enabled:
@@ -266,15 +305,28 @@ class SleepCoreMixin:
                 continue
 
             scope_key, scope_label = self._sleep_scope_for_group_id(group_id)
-            if scope_key in seen_scope_keys:
-                continue
-            scopes.append((scope_key, scope_label, self._message_stub_for_command("", group_id)))
-            seen_scope_keys.add(scope_key)
+            add_scope(scope_key, scope_label, self._message_stub_for_command("", group_id))
+
+        for message in self._state.idle_scope_messages.values():
+            scope_key, scope_label = self._sleep_scope_for_message(message)
+            add_scope(scope_key, scope_label, message)
 
         return scopes
 
+    def _remember_idle_scope(self, scope_key: str, message: dict[str, Any]) -> None:
+        """记录出现过活动的睡眠作用域，供后台静默检查使用"""
+
+        normalized_scope_key = scope_key.strip()
+        if not normalized_scope_key:
+            return
+
+        self._state.idle_scope_messages[normalized_scope_key] = self._message_stub_for_command(
+            message_session_id(message),
+            message_group_id(message),
+        )
+
     def _mark_sleep_activity(self, message: dict[str, Any]) -> None:
-        """记录当前作用域最近一次活跃时间，用于静默入睡判断"""
+        """记录当前作用域最近一次 Bot 参与和可见活动时间"""
 
         if not self._enabled() or not self.config.idle_sleep.enabled:
             return
@@ -282,7 +334,156 @@ class SleepCoreMixin:
             return
 
         scope_key, _ = self._sleep_scope_for_message(message)
-        self._state.last_activity_by_scope[scope_key] = monotonic()
+        self._remember_idle_scope(scope_key, message)
+        now = monotonic()
+        self._state.last_any_activity_by_scope[scope_key] = now
+        self._state.last_bot_activity_by_scope[scope_key] = now
+        self._clear_topic_grace(scope_key)
+
+    def _mark_inbound_sleep_activity(self, message: dict[str, Any]) -> None:
+        """记录入站消息活动，只影响完全安静计时"""
+
+        if not self._enabled() or not self.config.idle_sleep.enabled:
+            return
+        if self._is_sleeping(message):
+            return
+
+        scope_key, _ = self._sleep_scope_for_message(message)
+        self._remember_idle_scope(scope_key, message)
+        self._state.last_any_activity_by_scope[scope_key] = monotonic()
+        self._maybe_start_topic_grace(message)
+
+    def _mark_planner_sleep_activity(self, session_id: Any, raw_tool_calls: Any) -> None:
+        """Planner 真正产生有效动作时刷新静默入睡计时"""
+
+        if not self._enabled() or not self.config.idle_sleep.enabled:
+            return
+        if not self.config.idle_sleep.count_planner_actions_as_activity:
+            return
+
+        active_tool_names = [
+            tool_name
+            for tool_name in self._extract_planner_tool_names(raw_tool_calls)
+            if tool_name and tool_name not in QUIET_PLANNER_TOOL_NAMES
+        ]
+        if not active_tool_names:
+            return
+
+        self._mark_bot_sleep_activity_by_session(session_id)
+
+    def _mark_bot_sleep_activity_by_session(self, session_id: Any) -> None:
+        """根据会话 ID 刷新对应作用域的 Bot 参与计时"""
+
+        normalized_session_id = str(session_id or "").strip()
+        if not normalized_session_id:
+            return
+
+        scope_key, _ = self._sleep_scope_for_session_id(normalized_session_id)
+        if self._is_sleeping(scope_key=scope_key):
+            return
+        self._remember_idle_scope(scope_key, self._message_stub_for_command(normalized_session_id))
+        self._state.last_bot_activity_by_scope[scope_key] = monotonic()
+        self._clear_topic_grace(scope_key)
+
+    def _maybe_start_topic_grace(self, message: dict[str, Any]) -> None:
+        """临近无参与入睡时，给新话题一次进入 Planner 判断的缓冲"""
+
+        grace_seconds = self._topic_grace_seconds()
+        if grace_seconds <= 0:
+            return
+        if not self._is_inside_sleep_window(datetime.now(), message):
+            return
+
+        scope_key, scope_label = self._sleep_scope_for_message(message)
+        now_monotonic = monotonic()
+        force_grace = self._message_extends_topic_grace(message)
+        existing_grace_until = self._state.topic_grace_until_by_scope.get(scope_key, 0.0)
+        if not force_grace and existing_grace_until > now_monotonic:
+            return
+
+        if not force_grace:
+            if self._state.topic_grace_used_by_scope.get(scope_key, False):
+                return
+
+            last_bot_activity = self._state.last_bot_activity_by_scope.get(scope_key)
+            if last_bot_activity is None:
+                return
+
+            idle_seconds = max(1, int(self.config.idle_sleep.idle_minutes)) * 60
+            if now_monotonic - last_bot_activity < max(0, idle_seconds - grace_seconds):
+                return
+
+        grace_until = now_monotonic + grace_seconds
+        self._state.topic_grace_until_by_scope[scope_key] = max(existing_grace_until, grace_until)
+        self._state.topic_grace_used_by_scope[scope_key] = True
+        self._get_logger().info(
+            f"静默入睡进入话题判断缓冲: scope={scope_label} grace_seconds={grace_seconds} "
+            f"direct_mention={self._message_extends_topic_grace(message)}"
+        )
+
+    def _wake_from_sleeping_mention_if_needed(self, message: dict[str, Any]) -> bool:
+        """睡眠期间被直接提及时，按配置决定是否唤醒并放行消息"""
+
+        if not self._enabled() or not self.config.idle_sleep.wake_on_mention_while_sleeping:
+            return False
+        if not message_mentions_bot(message):
+            return False
+
+        sleep_record = self._active_sleep_record(message=message)
+        if sleep_record is None:
+            return False
+
+        self._wake("睡眠中被提及唤醒", scope_key=sleep_record.scope_key)
+        self._mark_sleep_activity(message)
+        return True
+
+    def _topic_grace_seconds(self) -> int:
+        """返回临睡前话题判断缓冲秒数。"""
+
+        return max(0, int(self.config.idle_sleep.topic_grace_seconds))
+
+    def _topic_grace_is_active(self, scope_key: str, now_monotonic: float) -> bool:
+        """判断指定作用域是否还处于临睡前话题判断缓冲"""
+
+        grace_until = self._state.topic_grace_until_by_scope.get(scope_key, 0.0)
+        if grace_until > now_monotonic:
+            return True
+
+        self._state.topic_grace_until_by_scope.pop(scope_key, None)
+        return False
+
+    def _clear_topic_grace(self, scope_key: str) -> None:
+        """清理指定作用域的话题判断缓冲。"""
+
+        self._state.topic_grace_until_by_scope.pop(scope_key, None)
+        self._state.topic_grace_used_by_scope.pop(scope_key, None)
+
+    def _message_extends_topic_grace(self, message: dict[str, Any]) -> bool:
+        """判断当前消息是否应该强制延长临睡前话题判断缓冲"""
+
+        if self.config.idle_sleep.at_extends_grace and has_at_component(message):
+            return True
+        return self.config.idle_sleep.mention_extends_grace and message_mentions_bot(message)
+
+    @staticmethod
+    def _extract_planner_tool_names(raw_tool_calls: Any) -> list[str]:
+        """从 Planner Hook 的工具调用载荷中提取工具名"""
+
+        if not isinstance(raw_tool_calls, list):
+            return []
+
+        tool_names: list[str] = []
+        for tool_call in raw_tool_calls:
+            if not isinstance(tool_call, dict):
+                continue
+
+            raw_name = tool_call.get("name") or tool_call.get("tool_name")
+            function_data = tool_call.get("function")
+            if not raw_name and isinstance(function_data, dict):
+                raw_name = function_data.get("name")
+            if isinstance(raw_name, str) and raw_name.strip():
+                tool_names.append(raw_name.strip())
+        return tool_names
 
     def _active_sleep_record(
         self,
@@ -303,13 +504,19 @@ class SleepCoreMixin:
                 self._prune_expired_sleep_records()
                 return next(iter(self._state.sleep_records.values()), None)
 
-        record = self._state.sleep_records.get(target_scope_key)
-        if record is None:
-            return None
-        if record.sleep_until is not None and datetime.now() < record.sleep_until:
-            return record
+        now = datetime.now()
+        if target_scope_key != ALL_SLEEP_SCOPE:
+            all_record = self._state.sleep_records.get(ALL_SLEEP_SCOPE)
+            if all_record is not None:
+                if all_record.sleep_until is not None and now < all_record.sleep_until:
+                    return all_record
+                self._expire_sleep_record(all_record.scope_key, all_record)
 
-        self._expire_sleep_record(target_scope_key, record)
+        record = self._state.sleep_records.get(target_scope_key)
+        if record is not None:
+            if record.sleep_until is not None and now < record.sleep_until:
+                return record
+            self._expire_sleep_record(record.scope_key, record)
         return None
 
     def _prune_expired_sleep_records(self) -> None:
@@ -575,7 +782,14 @@ class SleepCoreMixin:
         group_id = self._group_id_for_session_id(normalized_session_id)
         if group_id:
             return self._sleep_scope_for_group_id(group_id)
+        if self._default_chat_scopes_are_independent():
+            return f"session:{normalized_session_id}", self._chat_scope_label_for_session_id(normalized_session_id)
         return GLOBAL_SLEEP_SCOPE, "全局配置"
+
+    def _default_chat_scopes_are_independent(self) -> bool:
+        """返回未配置分群作息的聊天流是否也独立维护睡眠状态。"""
+
+        return bool(self.config.group_schedule.independent_default_scopes)
 
     def _group_id_for_session_id(self, session_id: str) -> str:
         """通过已注册聊天流解析群号。"""
@@ -597,7 +811,27 @@ class SleepCoreMixin:
         normalized_group_id = str(group_id or "").strip()
         if normalized_group_id and self._group_schedule_for_group_id(normalized_group_id) is not None:
             return f"group:{normalized_group_id}", f"群 {normalized_group_id} 分群配置"
+        if normalized_group_id and self._default_chat_scopes_are_independent():
+            return f"group:{normalized_group_id}", f"群 {normalized_group_id} 默认作息"
         return GLOBAL_SLEEP_SCOPE, "全局配置"
+
+    def _chat_scope_label_for_session_id(self, session_id: str) -> str:
+        """尽量为私聊等默认聊天流生成可读的睡眠作用域名称。"""
+
+        normalized_session_id = str(session_id or "").strip()
+        if not normalized_session_id:
+            return "默认聊天流"
+
+        try:
+            session = chat_manager.get_existing_session_by_session_id(normalized_session_id)
+        except Exception:
+            session = None
+
+        for attr_name in ("chat_name", "name", "display_name", "session_name"):
+            raw_label = getattr(session, attr_name, "") if session is not None else ""
+            if isinstance(raw_label, str) and raw_label.strip():
+                return raw_label.strip()
+        return f"聊天流 {normalized_session_id}"
 
     def _group_schedule_for_group_id(self, group_id: str) -> Any | None:
         """返回群号对应的分群作息配置"""
@@ -673,7 +907,7 @@ class SleepCoreMixin:
 
         command_names = {"/sleep_status", "/sleep_wake"}
         if self.config.control.force_sleep_commands_enabled:
-            command_names.update({"/sleep_now", "/sleep_force"})
+            command_names.update({"/sleep_now", "/sleep_force", "/sleep_forceall"})
         return command_names
 
     def _set_pending_sleep_request(self, message: dict[str, Any], text: str) -> None:

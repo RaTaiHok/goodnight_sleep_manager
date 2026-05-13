@@ -151,7 +151,10 @@ class SleepControlConfig(PluginConfigBase):
     planner_control_enabled: bool = Field(default=True, description="睡眠期间清空 Planner 工具并丢弃 Planner 响应")
     control_commands_enabled: bool = Field(default=True, description="允许 /sleep_status 和 /sleep_wake 控制命令")
     persist_sleep_state: bool = Field(default=True, description="重启后恢复未过期的睡眠状态")
-    force_sleep_commands_enabled: bool = Field(default=True, description="允许 /sleep_now 和 /sleep_force 管理命令")
+    force_sleep_commands_enabled: bool = Field(
+        default=True,
+        description="允许 /sleep_now、/sleep_force 和 /sleep_forceall 管理命令",
+    )
     admin_user_ids: List[str] = Field(default_factory=list, description="允许使用管理入睡命令的用户 ID；留空时不限制")
 
 
