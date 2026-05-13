@@ -7,6 +7,42 @@ from maibot_sdk import HookHandler
 from maibot_sdk.types import HookMode, HookOrder
 
 
+MEMORY_AUTOMATION_HOOK = "memory.automation.before_enqueue"
+
+
+def _memory_automation_hook_supported() -> bool:
+    """检测当前 MaiBot 本体是否提供自动记忆写回入队 Hook"""
+
+    try:
+        from src.plugin_runtime.host.hook_spec_registry import HookSpecRegistry
+        from src.services.memory_flow_service import register_memory_automation_hook_specs
+
+        registry = HookSpecRegistry()
+        registered_specs = register_memory_automation_hook_specs(registry)
+    except Exception:
+        return False
+
+    return any(spec.name == MEMORY_AUTOMATION_HOOK for spec in registered_specs)
+
+
+def _memory_automation_hook_handler(func: Any) -> Any:
+    """仅在主程序支持对应 Hook 时注册长期记忆拦截处理器"""
+
+    if not _memory_automation_hook_supported():
+        return func
+
+    try:
+        return HookHandler(
+            MEMORY_AUTOMATION_HOOK,
+            name="sleep_memory_automation_enqueue_blocker",
+            description="睡眠期间暂停自动记忆写回任务入队",
+            mode=HookMode.BLOCKING,
+            order=HookOrder.EARLY,
+        )(func)
+    except Exception:
+        return func
+
+
 class SleepHookHandlersMixin:
     """声明所有插件 Hook 入口"""
 
@@ -115,13 +151,7 @@ class SleepHookHandlersMixin:
             return self._abort_result("睡眠中，表达学习写入已暂停")
         return None
 
-    @HookHandler(
-        "memory.automation.before_enqueue",
-        name="sleep_memory_automation_enqueue_blocker",
-        description="睡眠期间暂停自动记忆写回任务入队",
-        mode=HookMode.BLOCKING,
-        order=HookOrder.EARLY,
-    )
+    @_memory_automation_hook_handler
     async def handle_memory_automation_before_enqueue(self, **kwargs: Any) -> dict[str, Any] | None:
         """睡眠期间禁止新触发的 A-Memorix/记忆整理任务进入队列"""
 
