@@ -20,7 +20,7 @@ class PluginSectionConfig(PluginConfigBase):
     __ui_order__ = 0
 
     enabled: bool = Field(default=True, description="是否启用晚安睡眠管理")
-    config_version: str = Field(default="1.1.0", description="配置版本")
+    config_version: str = Field(default="1.4.0", description="配置版本")
 
 
 class TriggerConfig(PluginConfigBase):
@@ -32,8 +32,9 @@ class TriggerConfig(PluginConfigBase):
 
     goodnight_patterns: List[str] = Field(
         default_factory=default_goodnight_patterns,
-        description="Bot 出站消息命中这些正则时，才可能进入睡眠",
+        description="Bot 出站消息命中这些正则时，可以进入睡眠",
     )
+    ai_confirmation_enabled: bool = Field(default=True, description="使用 AI 判断 Bot 是否确认自己要睡")
     pending_goodnight_patterns: List[str] = Field(
         default_factory=default_pending_goodnight_patterns,
         description="有人在合适时间催睡后，Bot 出站消息命中这些正则也会进入睡眠",
@@ -57,7 +58,7 @@ class SleepRequestConfig(PluginConfigBase):
     enabled: bool = Field(default=True, description="是否识别用户让 Bot 睡觉的消息")
     request_patterns: List[str] = Field(
         default_factory=default_sleep_request_patterns,
-        description="用户消息命中这些正则时，视为在建议 Bot 睡觉",
+        description="高级兜底：用户消息命中这些正则时，视为在建议 Bot 睡觉",
     )
     require_mention_in_group: bool = Field(default=True, description="群聊里需要 @ 或提及 Bot 才识别模糊催睡")
     pending_confirm_seconds: int = Field(default=600, description="合适时间催睡后，等待 Bot 自己说晚安的确认时长")
@@ -119,6 +120,8 @@ class SleepControlConfig(PluginConfigBase):
     planner_control_enabled: bool = Field(default=True, description="睡眠期间清空 Planner 工具并丢弃 Planner 响应")
     control_commands_enabled: bool = Field(default=True, description="允许 /sleep_status 和 /sleep_wake 控制命令")
     persist_sleep_state: bool = Field(default=True, description="重启后恢复未过期的睡眠状态")
+    force_sleep_commands_enabled: bool = Field(default=True, description="允许 /sleep_now 和 /sleep_force 管理命令")
+    admin_user_ids: List[str] = Field(default_factory=list, description="允许使用管理入睡命令的用户 ID；留空时不限制")
 
 
 class GoodnightSleepManagerConfig(PluginConfigBase):

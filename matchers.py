@@ -28,17 +28,23 @@ def looks_like_self_goodnight(
     normalized_text = normalize_text(text)
     if not normalized_text:
         return False
-    if len(normalized_text) > trigger_config.max_trigger_chars:
+
+    max_trigger_chars = trigger_config.max_trigger_chars
+    if has_pending_request:
+        max_trigger_chars = max(max_trigger_chars, 40)
+    if len(normalized_text) > max_trigger_chars:
         return False
     if trigger_config.reject_at_component and has_at_component(message):
         return False
     if trigger_config.reject_reply_message and not has_pending_request and (set_reply or has_reply_component(message)):
         return False
+    if has_pending_request and matches_any_pattern(normalized_text, trigger_config.pending_goodnight_patterns, logger):
+        return True
     if matches_any_pattern(normalized_text, trigger_config.directed_patterns, logger):
         return False
     if matches_any_pattern(normalized_text, trigger_config.goodnight_patterns, logger):
         return True
-    return has_pending_request and matches_any_pattern(normalized_text, trigger_config.pending_goodnight_patterns, logger)
+    return False
 
 
 def looks_like_sleep_request(

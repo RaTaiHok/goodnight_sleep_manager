@@ -28,16 +28,24 @@ class SleepHookHandlersMixin:
 
         del kwargs
 
-        if not self._enabled() or self._is_sleeping():
+        if not self._enabled():
             return None
+
+        if self._is_sleeping():
+            if not self.config.control.block_outbound_messages:
+                return None
+            if self._is_control_reply(message, processed_plain_text):
+                return None
+            return self._abort_result("睡眠中，出站消息已在构建后拦截")
 
         text = self._extract_text(message, processed_plain_text)
-        if not self._looks_like_self_goodnight(text, message, set_reply=set_reply):
-            return None
-
         now = datetime.now()
         if not self._is_inside_sleep_window(now, message):
-            self.ctx.logger.info(f"检测到晚安短句但当前不在允许入睡时间内，忽略: {text}")
+            if self._looks_like_self_goodnight(text, message, set_reply=set_reply):
+                self.ctx.logger.info(f"检测到晚安短句但当前不在允许入睡时间内，忽略: {text}")
+            return None
+
+        if not await self._should_enter_sleep_from_outbound(text, message, set_reply=set_reply):
             return None
 
         sleep_until = self._choose_sleep_until(now, message)
