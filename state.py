@@ -11,6 +11,7 @@ class SleepRecord:
 
     scope_key: str
     scope_label: str
+    sleep_started_at: Optional[datetime] = None
     sleep_until: Optional[datetime] = None
     sleep_reason: str = ""
     group_id: str = ""

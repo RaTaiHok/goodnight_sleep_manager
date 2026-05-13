@@ -4,6 +4,8 @@ from datetime import datetime
 from time import monotonic
 from typing import Any
 
+import asyncio
+
 from src.chat.message_receive.chat_manager import chat_manager
 
 from .confirmation_judge import (
@@ -25,6 +27,7 @@ from .message_utils import (
 )
 from .reply_generator import generate_off_window_reply
 from .schedule_utils import choose_sleep_until, format_datetime, is_inside_sleep_window
+from .sleep_review import append_sleep_review_message, generate_sleep_review
 from .state import SleepRecord, SleepState
 from .state_storage import clear_persisted_sleep_state, load_persisted_sleep_records, save_persisted_sleep_records
 
@@ -60,6 +63,7 @@ class SleepCoreMixin:
         record = SleepRecord(
             scope_key=scope_key,
             scope_label=scope_label,
+            sleep_started_at=datetime.now(),
             sleep_until=sleep_until,
             sleep_reason=reason,
             group_id=group_id,
@@ -83,6 +87,7 @@ class SleepCoreMixin:
         self._save_sleep_state()
         if record is not None:
             self._get_logger().info(f"晚安睡眠管理已唤醒: scope={record.scope_label} reason={reason}")
+            self._schedule_sleep_review(record)
 
     def _restore_sleep_state(self) -> None:
         """插件加载时从持久化文件恢复未过期的睡眠状态"""
@@ -206,6 +211,7 @@ class SleepCoreMixin:
 
         self._state.clear_sleep(scope_key)
         self._get_logger().info(f"晚安睡眠管理已唤醒: scope={record.scope_label} reason=到达预计醒来时间")
+        self._schedule_sleep_review(record)
         if save:
             self._save_sleep_state()
 
@@ -247,6 +253,40 @@ class SleepCoreMixin:
             return False
         return True
 
+    def _capture_sleep_review_message(self, message: dict[str, Any]) -> None:
+        """记录睡眠期间被拦截的消息，供醒来后回顾"""
+
+        if not self._enabled() or not self.config.sleep_review.enabled:
+            return
+
+        sleep_record = self._active_sleep_record(message=message)
+        if sleep_record is None:
+            return
+        append_sleep_review_message(message, sleep_record, self._get_logger())
+
+    def _schedule_sleep_review(self, sleep_record: SleepRecord) -> None:
+        """醒来后在后台生成睡眠期间聊天回顾"""
+
+        if not self._enabled() or not self.config.sleep_review.enabled:
+            return
+
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            self._get_logger().warning("无法生成睡醒回顾：当前没有运行中的事件循环")
+            return
+
+        task_name = f"goodnight_sleep_review_{sleep_record.scope_key.replace(':', '_')}"
+        loop.create_task(self._run_sleep_review(sleep_record), name=task_name)
+
+    async def _run_sleep_review(self, sleep_record: SleepRecord) -> None:
+        """执行睡醒回顾后台任务，避免异常泄漏到事件循环。"""
+
+        try:
+            await generate_sleep_review(self.ctx, sleep_record, self.config.sleep_review, self._get_logger())
+        except Exception as exc:
+            self._get_logger().warning(f"生成睡醒回顾后台任务失败: scope={sleep_record.scope_label} error={exc}")
+
     def _should_block_learning(self, session_id: Any = "") -> bool:
         """判断是否需要暂停表达学习"""
 
@@ -256,6 +296,31 @@ class SleepCoreMixin:
             and self.config.control.block_expression_learning
             and self._is_sleeping(session_id=normalized_session_id)
         )
+
+    def _should_block_memory_automation(
+        self,
+        session_id: Any = "",
+        group_id: Any = "",
+        message: dict[str, Any] | None = None,
+    ) -> bool:
+        """判断是否需要暂停自动记忆写回任务入队"""
+
+        if not self._enabled() or not self.config.control.block_memory_automation:
+            return False
+
+        if message is not None and self._is_sleeping(message):
+            return True
+
+        normalized_group_id = str(group_id or "").strip()
+        if normalized_group_id:
+            scope_key = self._sleep_scope_for_group_id(normalized_group_id)[0]
+            return self._is_sleeping(scope_key=scope_key)
+
+        normalized_session_id = str(session_id or "").strip()
+        if normalized_session_id:
+            return self._is_sleeping(session_id=normalized_session_id)
+
+        return self._is_sleeping()
 
     def _should_control_planner(self, session_id: Any = "") -> bool:
         """判断是否需要启用 Planner 兜底保护"""

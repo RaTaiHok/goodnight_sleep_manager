@@ -67,6 +67,11 @@ def save_persisted_sleep_records(sleep_records: Dict[str, SleepRecord]) -> None:
                 "scope_label": record.scope_label,
                 "group_id": record.group_id,
                 "session_id": record.session_id,
+                "sleep_started_at": (
+                    record.sleep_started_at.isoformat(timespec="seconds")
+                    if record.sleep_started_at is not None
+                    else None
+                ),
                 "sleep_until": record.sleep_until.isoformat(timespec="seconds"),
                 "sleep_reason": record.sleep_reason,
             }
@@ -99,6 +104,7 @@ def _load_records_from_mapping(raw_records: dict[Any, Any]) -> Dict[str, SleepRe
             scope_label=str(raw_record.get("scope_label") or raw_scope_key or "").strip(),
             group_id=str(raw_record.get("group_id") or "").strip(),
             session_id=str(raw_record.get("session_id") or "").strip(),
+            sleep_started_at_raw=raw_record.get("sleep_started_at"),
             sleep_until_raw=raw_record.get("sleep_until"),
             sleep_reason_raw=raw_record.get("sleep_reason"),
         )
@@ -115,6 +121,7 @@ def _load_legacy_record(raw_data: dict[str, Any]) -> SleepRecord | None:
         scope_label="全局配置",
         group_id="",
         session_id="",
+        sleep_started_at_raw=raw_data.get("sleep_started_at"),
         sleep_until_raw=raw_data.get("sleep_until"),
         sleep_reason_raw=raw_data.get("sleep_reason"),
     )
@@ -126,6 +133,7 @@ def _build_record(
     scope_label: str,
     group_id: str,
     session_id: str,
+    sleep_started_at_raw: Any,
     sleep_until_raw: Any,
     sleep_reason_raw: Any,
 ) -> SleepRecord | None:
@@ -136,11 +144,15 @@ def _build_record(
     if not isinstance(sleep_until_raw, str) or not sleep_until_raw.strip():
         return None
 
+    sleep_started_at = None
+    if isinstance(sleep_started_at_raw, str) and sleep_started_at_raw.strip():
+        sleep_started_at = datetime.fromisoformat(sleep_started_at_raw.strip())
     sleep_until = datetime.fromisoformat(sleep_until_raw.strip())
     sleep_reason = sleep_reason_raw.strip() if isinstance(sleep_reason_raw, str) else ""
     return SleepRecord(
         scope_key=scope_key,
         scope_label=scope_label or scope_key,
+        sleep_started_at=sleep_started_at,
         sleep_until=sleep_until,
         sleep_reason=sleep_reason,
         group_id=group_id,

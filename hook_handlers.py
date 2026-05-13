@@ -68,6 +68,7 @@ class SleepHookHandlersMixin:
 
         if not self._should_block_inbound(message):
             return None
+        self._capture_sleep_review_message(message)
         return self._abort_result("睡眠中，入站消息已在预处理前拦截")
 
     @HookHandler(
@@ -112,6 +113,27 @@ class SleepHookHandlersMixin:
 
         if self._should_block_learning(kwargs.get("session_id")):
             return self._abort_result("睡眠中，表达学习写入已暂停")
+        return None
+
+    @HookHandler(
+        "memory.automation.before_enqueue",
+        name="sleep_memory_automation_enqueue_blocker",
+        description="睡眠期间暂停自动记忆写回任务入队",
+        mode=HookMode.BLOCKING,
+        order=HookOrder.EARLY,
+    )
+    async def handle_memory_automation_before_enqueue(self, **kwargs: Any) -> dict[str, Any] | None:
+        """睡眠期间禁止新触发的 A-Memorix/记忆整理任务进入队列"""
+
+        raw_message = kwargs.get("message")
+        message = raw_message if isinstance(raw_message, dict) else None
+        if self._should_block_memory_automation(
+            session_id=kwargs.get("session_id"),
+            group_id=kwargs.get("group_id"),
+            message=message,
+        ):
+            service_name = str(kwargs.get("service_name") or "memory_automation").strip()
+            return self._abort_result(f"睡眠中，自动记忆写回已暂停: {service_name}")
         return None
 
     @HookHandler(

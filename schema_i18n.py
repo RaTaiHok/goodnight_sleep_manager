@@ -17,6 +17,7 @@ SECTION_TITLES: dict[str, LocalizedText] = {
     "schedule": {"zh_CN": "作息", "en_US": "Schedule"},
     "group_schedule": {"zh_CN": "分群作息", "en_US": "Group Schedule"},
     "control": {"zh_CN": "拦截", "en_US": "Control"},
+    "sleep_review": {"zh_CN": "睡醒回顾", "en_US": "Sleep Review"},
 }
 
 SECTION_DESCRIPTIONS: dict[str, LocalizedText] = {
@@ -29,20 +30,20 @@ SECTION_DESCRIPTIONS: dict[str, LocalizedText] = {
         "en_US": "Override the global schedule by group ID and use independent sleep state.",
     },
     "control": {"zh_CN": "睡眠期间暂停的主程序链路", "en_US": "Runtime chains paused while sleeping."},
+    "sleep_review": {
+        "zh_CN": "醒来后整理睡眠期间被拦截的聊天记录，不会自动回复历史消息",
+        "en_US": "Summarize intercepted messages after waking up without replying to old messages.",
+    },
 }
 
 FIELD_LABELS: dict[tuple[str, str], LocalizedText] = {
     ("plugin", "enabled"): {"zh_CN": "启用插件", "en_US": "Enable plugin"},
     ("plugin", "config_version"): {"zh_CN": "配置版本", "en_US": "Config version"},
-    ("trigger", "goodnight_patterns"): {"zh_CN": "入睡确认正则", "en_US": "sleep confirmation patterns"},
     ("trigger", "ai_confirmation_enabled"): {"zh_CN": "AI 语义入睡判定", "en_US": "AI semantic sleep judge"},
-    ("trigger", "pending_goodnight_patterns"): {"zh_CN": "待确认晚安正则", "en_US": "pending confirmation patterns"},
-    ("trigger", "directed_patterns"): {"zh_CN": "个人晚安排除正则", "en_US": "directed goodnight exclusion patterns"},
     ("trigger", "max_trigger_chars"): {"zh_CN": "触发短句最大长度", "en_US": "Max trigger length"},
     ("trigger", "reject_at_component"): {"zh_CN": "排除 @ 消息", "en_US": "Reject @ messages"},
     ("trigger", "reject_reply_message"): {"zh_CN": "排除引用回复", "en_US": "Reject quoted replies"},
     ("sleep_request", "enabled"): {"zh_CN": "识别用户催睡", "en_US": "Detect sleep requests"},
-    ("sleep_request", "request_patterns"): {"zh_CN": "用户催睡正则", "en_US": "sleep request patterns"},
     ("sleep_request", "require_mention_in_group"): {"zh_CN": "群聊要求提及 Bot", "en_US": "Require mention in groups"},
     ("sleep_request", "pending_confirm_seconds"): {"zh_CN": "待确认时长", "en_US": "Pending confirmation seconds"},
     ("sleep_request", "off_window_behavior"): {"zh_CN": "非入睡时间行为", "en_US": "Off-window behavior"},
@@ -56,12 +57,18 @@ FIELD_LABELS: dict[tuple[str, str], LocalizedText] = {
     ("group_schedule", "group_schedules"): {"zh_CN": "群作息覆盖", "en_US": "Group schedule overrides"},
     ("control", "block_inbound_messages"): {"zh_CN": "暂停入站消息", "en_US": "Block inbound messages"},
     ("control", "block_expression_learning"): {"zh_CN": "暂停表达学习", "en_US": "Block expression learning"},
+    ("control", "block_memory_automation"): {"zh_CN": "暂停记忆写入", "en_US": "Block memory writeback"},
     ("control", "block_outbound_messages"): {"zh_CN": "暂停后续出站消息", "en_US": "Block outbound messages"},
     ("control", "planner_control_enabled"): {"zh_CN": "暂停 Planner 结果", "en_US": "Control planner results"},
     ("control", "control_commands_enabled"): {"zh_CN": "允许控制命令", "en_US": "Allow control commands"},
     ("control", "persist_sleep_state"): {"zh_CN": "持久化睡眠状态", "en_US": "Persist sleep state"},
     ("control", "force_sleep_commands_enabled"): {"zh_CN": "允许管理入睡命令", "en_US": "Allow sleep management commands"},
     ("control", "admin_user_ids"): {"zh_CN": "管理员用户 ID", "en_US": "Admin user IDs"},
+    ("sleep_review", "enabled"): {"zh_CN": "启用睡醒回顾", "en_US": "Enable sleep review"},
+    ("sleep_review", "max_summary_messages_per_chat"): {"zh_CN": "单聊最大消息数", "en_US": "Max messages per chat"},
+    ("sleep_review", "max_summary_chars_per_chat"): {"zh_CN": "单聊最大字符数", "en_US": "Max characters per chat"},
+    ("sleep_review", "max_review_chats_per_wake"): {"zh_CN": "单次最大聊天流", "en_US": "Max chats per wake"},
+    ("sleep_review", "max_summary_tokens"): {"zh_CN": "单聊总结输出上限", "en_US": "Max summary tokens"},
 }
 
 ITEM_FIELD_LABELS: dict[tuple[str, str, str], LocalizedText] = {
@@ -96,6 +103,10 @@ FIELD_HINTS: dict[tuple[str, str], LocalizedText] = {
         "zh_CN": "开启后会把未过期的睡眠状态保存到 data/plugins/goodnight_sleep_manager/sleep_state.json",
         "en_US": "When enabled, active sleep state is saved to data/plugins/goodnight_sleep_manager/sleep_state.json.",
     },
+    ("control", "block_memory_automation"): {
+        "zh_CN": "开启后，睡眠期间不再让新触发的人物事实写回和聊天摘要写回进入队列；已经运行中的任务不会被取消",
+        "en_US": "When enabled, new person fact and chat summary writeback jobs will not be queued while sleeping. Already running jobs are not cancelled.",
+    },
     ("control", "force_sleep_commands_enabled"): {
         "zh_CN": "开启后允许使用 /sleep_now 引导入睡，或使用 /sleep_force 强制入睡",
         "en_US": "Enable /sleep_now and /sleep_force for testing or managing sleep state.",
@@ -103,6 +114,26 @@ FIELD_HINTS: dict[tuple[str, str], LocalizedText] = {
     ("control", "admin_user_ids"): {
         "zh_CN": "填写后只有这些用户 ID 可使用 /sleep_now 和 /sleep_force；留空则不限制",
         "en_US": "When set, only these user IDs can use /sleep_now and /sleep_force. Empty means unrestricted.",
+    },
+    ("sleep_review", "enabled"): {
+        "zh_CN": "开启后，睡眠期间被拦截的消息会保存到本地；对应作用域醒来时按群聊/私聊生成回顾文件，不会向聊天流补发回复",
+        "en_US": "When enabled, intercepted messages are saved locally and summarized by group/private chat when the matching sleep scope wakes. No replies are sent.",
+    },
+    ("sleep_review", "max_summary_messages_per_chat"): {
+        "zh_CN": "启用睡醒回顾后生效。每个群聊/私聊只把最后这些条消息送入总结模型；完整轻量记录仍保存在回顾文件里",
+        "en_US": "Effective when sleep review is enabled. Only the latest N messages per group/private chat are sent to the summary model; lightweight records remain in the report.",
+    },
+    ("sleep_review", "max_summary_chars_per_chat"): {
+        "zh_CN": "启用睡醒回顾后生效。每个群聊/私聊送入总结模型的聊天文本字符上限，用于控制输入 token",
+        "en_US": "Effective when sleep review is enabled. Maximum chat text characters sent to the summary model per group/private chat, used to control input tokens.",
+    },
+    ("sleep_review", "max_review_chats_per_wake"): {
+        "zh_CN": "启用睡醒回顾后生效。一次醒来最多调用模型总结这些聊天流；超出的聊天流只保存记录和基础统计",
+        "en_US": "Effective when sleep review is enabled. Maximum chats summarized with the model per wake; extra chats keep records and basic stats only.",
+    },
+    ("sleep_review", "max_summary_tokens"): {
+        "zh_CN": "启用睡醒回顾后生效。每个聊天流总结的输出 token 上限，用于控制输出成本",
+        "en_US": "Effective when sleep review is enabled. Maximum output tokens for each chat summary, used to control output cost.",
     },
 }
 
@@ -113,6 +144,13 @@ HIDDEN_VISUAL_FIELDS: set[tuple[str, str]] = {
     ("trigger", "directed_patterns"),
     ("trigger", "max_trigger_chars"),
     ("sleep_request", "request_patterns"),
+}
+
+SLEEP_REVIEW_LIMIT_FIELDS: set[str] = {
+    "max_summary_messages_per_chat",
+    "max_summary_chars_per_chat",
+    "max_review_chats_per_wake",
+    "max_summary_tokens",
 }
 
 
@@ -144,6 +182,9 @@ def apply_config_schema_i18n(schema: dict[str, Any]) -> dict[str, Any]:
                 field["hint"] = _resolve_text(FIELD_HINTS[key])
             if key in HIDDEN_VISUAL_FIELDS:
                 field["hidden"] = True
+            if section_name == "sleep_review" and field_name in SLEEP_REVIEW_LIMIT_FIELDS:
+                field["min"] = 1
+                field["step"] = 1
             _apply_item_field_labels(str(section_name), str(field_name), field)
     return schema
 

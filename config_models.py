@@ -20,7 +20,7 @@ class PluginSectionConfig(PluginConfigBase):
     __ui_order__ = 0
 
     enabled: bool = Field(default=True, description="是否启用晚安睡眠管理")
-    config_version: str = Field(default="1.5.0", description="配置版本")
+    config_version: str = Field(default="1.6.0", description="配置版本")
 
 
 class TriggerConfig(PluginConfigBase):
@@ -32,16 +32,16 @@ class TriggerConfig(PluginConfigBase):
 
     goodnight_patterns: List[str] = Field(
         default_factory=default_goodnight_patterns,
-        description="Bot 出站消息命中这些正则时，可以进入睡眠",
+        description="Bot 出站消息命中这些规则时，可以进入睡眠",
     )
     ai_confirmation_enabled: bool = Field(default=True, description="使用 AI 判断 Bot 是否确认自己要睡")
     pending_goodnight_patterns: List[str] = Field(
         default_factory=default_pending_goodnight_patterns,
-        description="有人在合适时间催睡后，Bot 出站消息命中这些正则也会进入睡眠",
+        description="有人在合适时间催睡后，Bot 出站消息命中这些规则也会进入睡眠",
     )
     directed_patterns: List[str] = Field(
         default_factory=default_directed_patterns,
-        description="命中这些正则时视为对别人说晚安，不会进入睡眠",
+        description="命中这些规则时视为对别人说晚安，不会进入睡眠",
     )
     max_trigger_chars: int = Field(default=18, description="触发短句的最大长度，过长文本不会触发")
     reject_at_component: bool = Field(default=True, description="出站消息包含 @ 组件时不触发睡眠")
@@ -58,7 +58,7 @@ class SleepRequestConfig(PluginConfigBase):
     enabled: bool = Field(default=True, description="是否识别用户让 Bot 睡觉的消息")
     request_patterns: List[str] = Field(
         default_factory=default_sleep_request_patterns,
-        description="高级兜底：用户消息命中这些正则时，视为在建议 Bot 睡觉",
+        description="用户消息命中这些规则时，视为在建议 Bot 睡觉",
     )
     require_mention_in_group: bool = Field(default=True, description="群聊里需要 @ 或提及 Bot 才识别模糊催睡")
     pending_confirm_seconds: int = Field(default=600, description="合适时间催睡后，等待 Bot 自己说晚安的确认时长")
@@ -116,12 +116,27 @@ class SleepControlConfig(PluginConfigBase):
 
     block_inbound_messages: bool = Field(default=True, description="睡眠期间拦截入站消息主链路")
     block_expression_learning: bool = Field(default=True, description="睡眠期间暂停表达学习写入")
+    block_memory_automation: bool = Field(default=True, description="睡眠期间暂停自动记忆写回入队")
     block_outbound_messages: bool = Field(default=True, description="睡眠期间拦截后续出站消息")
     planner_control_enabled: bool = Field(default=True, description="睡眠期间清空 Planner 工具并丢弃 Planner 响应")
     control_commands_enabled: bool = Field(default=True, description="允许 /sleep_status 和 /sleep_wake 控制命令")
     persist_sleep_state: bool = Field(default=True, description="重启后恢复未过期的睡眠状态")
     force_sleep_commands_enabled: bool = Field(default=True, description="允许 /sleep_now 和 /sleep_force 管理命令")
     admin_user_ids: List[str] = Field(default_factory=list, description="允许使用管理入睡命令的用户 ID；留空时不限制")
+
+
+class SleepReviewConfig(PluginConfigBase):
+    """睡醒回顾配置"""
+
+    __ui_label__ = "睡醒回顾"
+    __ui_icon__ = "book-open"
+    __ui_order__ = 6
+
+    enabled: bool = Field(default=False, description="醒来后按聊天流总结睡眠期间被拦截的消息")
+    max_summary_messages_per_chat: int = Field(default=80, description="每个聊天流最多送入总结模型的消息条数")
+    max_summary_chars_per_chat: int = Field(default=6000, description="每个聊天流最多送入总结模型的字符数")
+    max_review_chats_per_wake: int = Field(default=10, description="每次醒来最多总结的聊天流数量")
+    max_summary_tokens: int = Field(default=500, description="每个聊天流总结最多输出 token 数")
 
 
 class GoodnightSleepManagerConfig(PluginConfigBase):
@@ -133,3 +148,4 @@ class GoodnightSleepManagerConfig(PluginConfigBase):
     schedule: ScheduleConfig = Field(default_factory=ScheduleConfig)
     group_schedule: GroupScheduleConfig = Field(default_factory=GroupScheduleConfig)
     control: SleepControlConfig = Field(default_factory=SleepControlConfig)
+    sleep_review: SleepReviewConfig = Field(default_factory=SleepReviewConfig)
