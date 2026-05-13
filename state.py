@@ -1,29 +1,42 @@
 """晚安睡眠管理的运行期状态"""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Optional
+from typing import Dict, Optional
+
+
+@dataclass
+class SleepRecord:
+    """单个睡眠作用域的状态"""
+
+    scope_key: str
+    scope_label: str
+    sleep_until: Optional[datetime] = None
+    sleep_reason: str = ""
+    group_id: str = ""
+    session_id: str = ""
+    allowed_trigger_message_id: str = ""
 
 
 @dataclass
 class SleepState:
-    """插件运行期状态。"""
+    """插件运行期状态"""
 
-    sleep_until: Optional[datetime] = None
-    sleep_reason: str = ""
-    allowed_trigger_message_id: str = ""
+    sleep_records: Dict[str, SleepRecord] = field(default_factory=dict)
     control_reply_allowed_until: float = 0.0
     pending_sleep_request_until: float = 0.0
     pending_sleep_request_session_id: str = ""
     pending_sleep_request_group_id: str = ""
     pending_sleep_request_text: str = ""
 
-    def clear_sleep(self) -> None:
+    def clear_sleep(self, scope_key: str = "") -> None:
         """清理当前睡眠状态"""
 
-        self.sleep_until = None
-        self.sleep_reason = ""
-        self.allowed_trigger_message_id = ""
+        normalized_scope_key = scope_key.strip()
+        if normalized_scope_key:
+            self.sleep_records.pop(normalized_scope_key, None)
+            return
+        self.sleep_records.clear()
 
     def clear_pending_request(self) -> None:
         """清理待确认的用户催睡状态"""

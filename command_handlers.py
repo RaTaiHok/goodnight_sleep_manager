@@ -10,39 +10,56 @@ class SleepCommandHandlersMixin:
     """声明插件命令入口"""
 
     @Command("sleep_status", description="查看晚安睡眠管理状态", pattern=r"^/sleep_status$")
-    async def handle_status_command(self, stream_id: str = "", **kwargs: Any) -> tuple[bool, str, bool]:
+    async def handle_status_command(
+        self,
+        stream_id: str = "",
+        group_id: str = "",
+        **kwargs: Any,
+    ) -> tuple[bool, str, bool]:
         """查看当前睡眠状态"""
 
         del kwargs
 
         self._allow_control_reply()
-        if self._is_sleeping() and self._state.sleep_until is not None:
+        command_message = self._message_stub_for_command(stream_id, group_id)
+        scope_key, scope_label = self._sleep_scope_for_message(command_message)
+        sleep_record = self._active_sleep_record(scope_key=scope_key)
+        if sleep_record is not None and sleep_record.sleep_until is not None:
             message = (
                 "[睡眠管理] 当前正在睡眠\n"
-                f"预计醒来时间: {self._format_datetime(self._state.sleep_until)}\n"
-                f"原因: {self._state.sleep_reason or '未记录'}\n"
+                f"作用域: {sleep_record.scope_label}\n"
+                f"预计醒来时间: {self._format_datetime(sleep_record.sleep_until)}\n"
+                f"原因: {sleep_record.sleep_reason or '未记录'}\n"
                 f"持久化: {'已启用' if self.config.control.persist_sleep_state else '已关闭'}"
             )
         else:
             message = (
                 "[睡眠管理] 当前未处于睡眠状态\n"
+                f"作用域: {scope_label}\n"
                 f"持久化: {'已启用' if self.config.control.persist_sleep_state else '已关闭'}"
             )
         await self.ctx.send.text(message, stream_id)
         return True, message, True
 
     @Command("sleep_wake", description="手动唤醒晚安睡眠管理", pattern=r"^/sleep_wake$")
-    async def handle_wake_command(self, stream_id: str = "", **kwargs: Any) -> tuple[bool, str, bool]:
+    async def handle_wake_command(
+        self,
+        stream_id: str = "",
+        group_id: str = "",
+        **kwargs: Any,
+    ) -> tuple[bool, str, bool]:
         """手动解除睡眠状态"""
 
         del kwargs
 
         self._allow_control_reply()
-        if self._is_sleeping():
-            self._wake("手动唤醒")
-            message = "[睡眠管理] 已手动唤醒"
+        command_message = self._message_stub_for_command(stream_id, group_id)
+        scope_key, scope_label = self._sleep_scope_for_message(command_message)
+        if self._is_sleeping(scope_key=scope_key):
+            self._wake("手动唤醒", scope_key=scope_key)
+            message = f"[睡眠管理] 已手动唤醒\n作用域: {scope_label}"
         else:
-            message = "[睡眠管理] 当前本来就是醒着"
+            message = f"[睡眠管理] 当前本来就是醒着\n作用域: {scope_label}"
         await self.ctx.send.text(message, stream_id)
         return True, message, True
 
@@ -69,14 +86,19 @@ class SleepCommandHandlersMixin:
             await self.ctx.send.text(message, stream_id)
             return True, message, True
 
-        if self._is_sleeping() and self._state.sleep_until is not None:
-            message = f"[睡眠管理] 当前已经在睡眠中\n预计醒来时间: {self._format_datetime(self._state.sleep_until)}"
+        command_message = self._message_stub_for_command(stream_id, group_id)
+        sleep_record = self._active_sleep_record(message=command_message)
+        if sleep_record is not None and sleep_record.sleep_until is not None:
+            message = (
+                "[睡眠管理] 当前已经在睡眠中\n"
+                f"作用域: {sleep_record.scope_label}\n"
+                f"预计醒来时间: {self._format_datetime(sleep_record.sleep_until)}"
+            )
             await self.ctx.send.text(message, stream_id)
             return True, message, True
 
         now = datetime.now()
-        command_message = self._message_stub_for_command(stream_id, group_id)
-        schedule_config, schedule_source = self._schedule_for_group_id(group_id)
+        schedule_config, schedule_source = self._schedule_for_message_with_source(command_message)
         if not self._is_inside_sleep_window(now, command_message):
             message = (
                 "[睡眠管理] 当前不在允许入睡时间内\n"
@@ -133,20 +155,25 @@ class SleepCommandHandlersMixin:
             await self.ctx.send.text(message, stream_id)
             return True, message, True
 
-        if self._is_sleeping() and self._state.sleep_until is not None:
-            message = f"[睡眠管理] 当前已经在睡眠中\n预计醒来时间: {self._format_datetime(self._state.sleep_until)}"
+        command_message = self._message_stub_for_command(stream_id, group_id)
+        sleep_record = self._active_sleep_record(message=command_message)
+        if sleep_record is not None and sleep_record.sleep_until is not None:
+            message = (
+                "[睡眠管理] 当前已经在睡眠中\n"
+                f"作用域: {sleep_record.scope_label}\n"
+                f"预计醒来时间: {self._format_datetime(sleep_record.sleep_until)}"
+            )
             await self.ctx.send.text(message, stream_id)
             return True, message, True
 
         now = datetime.now()
-        command_message = self._message_stub_for_command(stream_id, group_id)
-        _, schedule_source = self._schedule_for_group_id(group_id)
+        _, schedule_source = self._schedule_for_message_with_source(command_message)
 
         sleep_until = self._choose_sleep_until(now, command_message)
         reason = "/sleep_force 管理命令触发"
         if user_id.strip():
             reason = f"{reason}: user={user_id.strip()}"
-        self._enter_sleep(sleep_until, reason)
+        self._enter_sleep(sleep_until, reason, command_message)
         message = (
             "[睡眠管理] 已进入睡眠\n"
             f"生效作息: {schedule_source}\n"

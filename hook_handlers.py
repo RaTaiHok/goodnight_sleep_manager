@@ -31,7 +31,7 @@ class SleepHookHandlersMixin:
         if not self._enabled():
             return None
 
-        if self._is_sleeping():
+        if self._is_sleeping(message):
             if not self.config.control.block_outbound_messages:
                 return None
             if self._is_control_reply(message, processed_plain_text):
@@ -49,8 +49,9 @@ class SleepHookHandlersMixin:
             return None
 
         sleep_until = self._choose_sleep_until(now, message)
-        self._enter_sleep(sleep_until, f"Bot 出站短句触发: {text}")
-        self._state.allowed_trigger_message_id = self._message_id(message)
+        sleep_record = self._enter_sleep(sleep_until, f"Bot 出站短句触发: {text}", message)
+        sleep_record.allowed_trigger_message_id = self._message_id(message)
+        self._save_sleep_state()
         return None
 
     @HookHandler(
@@ -95,9 +96,7 @@ class SleepHookHandlersMixin:
     async def handle_expression_after_extract(self, **kwargs: Any) -> dict[str, Any] | None:
         """睡眠期间中止本轮表达学习"""
 
-        del kwargs
-
-        if self._should_block_learning():
+        if self._should_block_learning(kwargs.get("session_id")):
             return self._abort_result("睡眠中，表达学习提取已暂停")
         return None
 
@@ -111,9 +110,7 @@ class SleepHookHandlersMixin:
     async def handle_expression_before_upsert(self, **kwargs: Any) -> dict[str, Any] | None:
         """睡眠期间跳过表达学习写库"""
 
-        del kwargs
-
-        if self._should_block_learning():
+        if self._should_block_learning(kwargs.get("session_id")):
             return self._abort_result("睡眠中，表达学习写入已暂停")
         return None
 
@@ -127,7 +124,7 @@ class SleepHookHandlersMixin:
     async def handle_planner_before_request(self, **kwargs: Any) -> dict[str, Any] | None:
         """Planner hook 不允许 abort，这里只能改写请求做兜底"""
 
-        if self._should_control_planner():
+        if self._should_control_planner(kwargs.get("session_id")):
             modified_kwargs = dict(kwargs)
             modified_kwargs["tool_definitions"] = []
             modified_kwargs["messages"] = [
@@ -170,7 +167,7 @@ class SleepHookHandlersMixin:
     async def handle_planner_after_response(self, **kwargs: Any) -> dict[str, Any] | None:
         """睡眠期间清空 Planner 响应，避免后续动作继续执行"""
 
-        if not self._should_control_planner():
+        if not self._should_control_planner(kwargs.get("session_id")):
             return None
 
         modified_kwargs = dict(kwargs)
@@ -190,12 +187,17 @@ class SleepHookHandlersMixin:
 
         del kwargs
 
-        if not self._enabled() or not self._is_sleeping() or not self.config.control.block_outbound_messages:
+        if not self._enabled() or not self._is_sleeping(message) or not self.config.control.block_outbound_messages:
+            return None
+
+        sleep_record = self._active_sleep_record(message=message)
+        if sleep_record is None:
             return None
 
         message_id = self._message_id(message)
-        if message_id and message_id == self._state.allowed_trigger_message_id:
-            self._state.allowed_trigger_message_id = ""
+        if message_id and message_id == sleep_record.allowed_trigger_message_id:
+            sleep_record.allowed_trigger_message_id = ""
+            self._save_sleep_state()
             return None
 
         if self._is_control_reply(message):

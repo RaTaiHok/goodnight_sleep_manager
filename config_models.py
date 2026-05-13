@@ -20,7 +20,7 @@ class PluginSectionConfig(PluginConfigBase):
     __ui_order__ = 0
 
     enabled: bool = Field(default=True, description="是否启用晚安睡眠管理")
-    config_version: str = Field(default="1.4.0", description="配置版本")
+    config_version: str = Field(default="1.5.0", description="配置版本")
 
 
 class TriggerConfig(PluginConfigBase):
@@ -103,7 +103,7 @@ class GroupScheduleConfig(PluginConfigBase):
 
     group_schedules: List[GroupScheduleEntryConfig] = Field(
         default_factory=list,
-        description="按群号覆盖全局作息；命中群号时优先使用这里的时间配置",
+        description="按群号覆盖全局作息；命中群号时优先使用这里的时间配置和独立睡眠状态",
     )
 
 

@@ -24,7 +24,10 @@ SECTION_DESCRIPTIONS: dict[str, LocalizedText] = {
     "trigger": {"zh_CN": "Bot 自己确认入睡时使用的语义判定规则", "en_US": "Semantic rules used when the bot confirms sleep by itself."},
     "sleep_request": {"zh_CN": "用户建议 Bot 睡觉时的处理方式", "en_US": "How to handle user messages suggesting the bot should sleep."},
     "schedule": {"zh_CN": "允许入睡和醒来的时间计算", "en_US": "Sleep window and wake-up time calculation."},
-    "group_schedule": {"zh_CN": "按群号覆盖全局作息，命中时优先生效", "en_US": "Override the global schedule by group ID."},
+    "group_schedule": {
+        "zh_CN": "按群号覆盖全局作息，命中时使用独立睡眠状态",
+        "en_US": "Override the global schedule by group ID and use independent sleep state.",
+    },
     "control": {"zh_CN": "睡眠期间暂停的主程序链路", "en_US": "Runtime chains paused while sleeping."},
 }
 
@@ -86,8 +89,8 @@ FIELD_HINTS: dict[tuple[str, str], LocalizedText] = {
         "en_US": "When enabled, during the sleep window, use the replyer model for pending sleep requests or sleep-related bot messages, accepting only SLEEP/NOT_SLEEP/UNSURE.",
     },
     ("group_schedule", "group_schedules"): {
-        "zh_CN": "同一群号命中后使用这里的作息和睡眠时长，优先级高于全局“作息”页",
-        "en_US": "When a group ID matches, this schedule and duration override the global Schedule section.",
+        "zh_CN": "同一群号命中后使用这里的作息和睡眠时长，并拥有独立睡眠状态，不受全局睡眠影响",
+        "en_US": "When a group ID matches, this schedule and duration override the global Schedule section and use an independent sleep state.",
     },
     ("control", "persist_sleep_state"): {
         "zh_CN": "开启后会把未过期的睡眠状态保存到 data/plugins/goodnight_sleep_manager/sleep_state.json",
@@ -104,6 +107,7 @@ FIELD_HINTS: dict[tuple[str, str], LocalizedText] = {
 }
 
 HIDDEN_VISUAL_FIELDS: set[tuple[str, str]] = {
+    ("plugin", "config_version"),
     ("trigger", "goodnight_patterns"),
     ("trigger", "pending_goodnight_patterns"),
     ("trigger", "directed_patterns"),
