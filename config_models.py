@@ -20,7 +20,7 @@ class PluginSectionConfig(PluginConfigBase):
     __ui_order__ = 0
 
     enabled: bool = Field(default=True, description="是否启用晚安睡眠管理")
-    config_version: str = Field(default="1.7.0", description="配置版本")
+    config_version: str = Field(default="1.8.0", description="配置版本")
 
 
 class TriggerConfig(PluginConfigBase):
@@ -156,6 +156,7 @@ class SleepControlConfig(PluginConfigBase):
     planner_control_enabled: bool = Field(default=True, description="睡眠期间清空 Planner 工具并丢弃 Planner 响应")
     control_commands_enabled: bool = Field(default=True, description="允许 /sleep_status 和 /sleep_wake 控制命令")
     persist_sleep_state: bool = Field(default=True, description="重启后恢复未过期的睡眠状态")
+    natural_wake_enabled: bool = Field(default=True, description="到达预计醒来时间后由后台任务自动唤醒")
     force_sleep_commands_enabled: bool = Field(
         default=True,
         description="允许 /sleep_now、/sleep_force 和 /sleep_forceall 管理命令",

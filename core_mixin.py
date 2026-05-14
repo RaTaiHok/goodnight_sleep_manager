@@ -42,12 +42,14 @@ class SleepCoreMixin:
 
     _state: SleepState
     _idle_sleep_task: asyncio.Task | None
+    _natural_wake_task: asyncio.Task | None
 
     def _init_sleep_state(self) -> None:
         """初始化插件内存状态"""
 
         self._state = SleepState()
         self._idle_sleep_task = None
+        self._natural_wake_task = None
 
     def _enabled(self) -> bool:
         """返回插件是否启用"""
@@ -92,6 +94,7 @@ class SleepCoreMixin:
         self._get_logger().info(
             f"晚安睡眠管理进入睡眠，作用域: {scope_label}，预计醒来: {format_datetime(sleep_until)}，原因: {reason}"
         )
+        self._start_natural_wake_task()
         return record
 
     def _wake(self, reason: str, message: dict[str, Any] | None = None, *, scope_key: str = "") -> None:
@@ -198,6 +201,78 @@ class SleepCoreMixin:
 
         self._clear_sleep_state_storage()
 
+    def _start_natural_wake_task(self) -> None:
+        """按配置启动自然醒来后台检查任务"""
+
+        if not self._enabled() or not self.config.control.natural_wake_enabled:
+            return
+        if not self._state.sleep_records:
+            return
+        if self._natural_wake_task is not None and not self._natural_wake_task.done():
+            return
+
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            self._get_logger().warning("无法启动自然醒来检查：当前没有运行中的事件循环")
+            return
+
+        self._natural_wake_task = loop.create_task(self._natural_wake_loop(), name="goodnight_natural_wake_checker")
+
+    async def _stop_natural_wake_task(self) -> None:
+        """停止自然醒来后台检查任务"""
+
+        task = self._natural_wake_task
+        self._natural_wake_task = None
+        if task is None or task.done():
+            return
+
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            return
+        except Exception as exc:
+            self._get_logger().warning(f"停止自然醒来检查任务时出现异常: {exc}")
+
+    async def _restart_natural_wake_task(self) -> None:
+        """根据最新配置重启自然醒来后台检查任务"""
+
+        await self._stop_natural_wake_task()
+        self._start_natural_wake_task()
+
+    async def _natural_wake_loop(self) -> None:
+        """定期清理已经到达预计醒来时间的睡眠状态"""
+
+        while True:
+            if not self._state.sleep_records:
+                self._natural_wake_task = None
+                return
+
+            try:
+                self._check_natural_wake_once()
+            except Exception as exc:
+                self._get_logger().warning(f"自然醒来检查失败: {exc}")
+
+            if not self._state.sleep_records:
+                self._natural_wake_task = None
+                return
+
+            await asyncio.sleep(self._natural_wake_check_interval_seconds())
+
+    def _natural_wake_check_interval_seconds(self) -> int:
+        """返回自然醒来后台检查间隔"""
+
+        return 30
+
+    def _check_natural_wake_once(self) -> None:
+        """检查是否存在到点后可以自然醒来的睡眠状态"""
+
+        if not self._enabled() or not self.config.control.natural_wake_enabled:
+            return
+
+        self._prune_expired_sleep_records()
+
     def _start_idle_sleep_task(self) -> None:
         """按配置启动静默入睡后台检查任务"""
 
@@ -258,7 +333,6 @@ class SleepCoreMixin:
         if not self._enabled() or not self.config.idle_sleep.enabled:
             return
 
-        self._prune_expired_sleep_records()
         now = datetime.now()
         now_monotonic = monotonic()
         idle_minutes = max(1, int(self.config.idle_sleep.idle_minutes))
@@ -267,6 +341,8 @@ class SleepCoreMixin:
         silence_seconds = silence_minutes * 60
 
         for scope_key, scope_label, message in self._iter_idle_sleep_scopes():
+            if not self.config.control.natural_wake_enabled and self._has_sleep_record_for_scope(scope_key):
+                continue
             if self._is_sleeping(scope_key=scope_key):
                 continue
 
@@ -300,6 +376,16 @@ class SleepCoreMixin:
             self._state.last_bot_activity_by_scope[scope_key] = now_monotonic
             self._clear_topic_grace(scope_key)
             self._get_logger().info(f"静默入睡已触发: scope={scope_label} reason={sleep_reason}")
+
+    def _has_sleep_record_for_scope(self, scope_key: str) -> bool:
+        """不触发到点清理，仅判断指定作用域是否存在睡眠记录"""
+
+        normalized_scope_key = scope_key.strip()
+        if not normalized_scope_key:
+            return False
+        if normalized_scope_key != ALL_SLEEP_SCOPE and ALL_SLEEP_SCOPE in self._state.sleep_records:
+            return True
+        return normalized_scope_key in self._state.sleep_records
 
     def _iter_idle_sleep_scopes(self) -> list[tuple[str, str, dict[str, Any] | None]]:
         """返回需要静默检查的全局和分群睡眠作用域"""

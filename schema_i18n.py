@@ -88,6 +88,7 @@ FIELD_LABELS: dict[tuple[str, str], LocalizedText] = {
     ("control", "planner_control_enabled"): {"zh_CN": "暂停 Planner 结果", "en_US": "Control planner results"},
     ("control", "control_commands_enabled"): {"zh_CN": "允许控制命令", "en_US": "Allow control commands"},
     ("control", "persist_sleep_state"): {"zh_CN": "持久化睡眠状态", "en_US": "Persist sleep state"},
+    ("control", "natural_wake_enabled"): {"zh_CN": "自然到点醒来", "en_US": "Natural wake on time"},
     ("control", "force_sleep_commands_enabled"): {"zh_CN": "允许管理入睡命令", "en_US": "Allow sleep management commands"},
     ("control", "admin_user_ids"): {"zh_CN": "管理员用户 ID", "en_US": "Admin user IDs"},
     ("sleep_review", "enabled"): {"zh_CN": "启用睡醒回顾", "en_US": "Enable sleep review"},
@@ -176,6 +177,10 @@ FIELD_HINTS: dict[tuple[str, str], LocalizedText] = {
     ("control", "persist_sleep_state"): {
         "zh_CN": "开启后会把未过期的睡眠状态保存到 data/plugins/goodnight_sleep_manager/sleep_state.json",
         "en_US": "When enabled, active sleep state is saved to data/plugins/goodnight_sleep_manager/sleep_state.json.",
+    },
+    ("control", "natural_wake_enabled"): {
+        "zh_CN": "默认开启。进入睡眠后才启动轻量后台检查，到达预计醒来时间后自动清理睡眠状态；不调用模型、不消耗 token。关闭后只会在消息、命令或其他链路查询睡眠状态时懒唤醒",
+        "en_US": "Enabled by default. A lightweight background checker starts only after sleep begins and clears sleep state after the scheduled wake time without model calls or token use. When disabled, wake-up is lazy and happens only when messages, commands, or other chains query sleep state.",
     },
     ("control", "block_memory_automation"): {
         "zh_CN": "开启后，睡眠期间不再让新触发的人物事实写回和聊天摘要写回进入队列；已经运行中的任务不会被取消",

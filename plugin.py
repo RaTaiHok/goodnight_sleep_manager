@@ -29,12 +29,14 @@ class GoodnightSleepManagerPlugin(
         """插件加载时输出当前状态"""
 
         self._restore_sleep_state()
+        self._start_natural_wake_task()
         self._start_idle_sleep_task()
         self.ctx.logger.info("晚安睡眠管理已加载")
 
     async def on_unload(self) -> None:
         """插件卸载时保留未过期睡眠状态，便于重启恢复"""
 
+        await self._stop_natural_wake_task()
         await self._stop_idle_sleep_task()
         self._handle_plugin_unload()
 
@@ -48,6 +50,7 @@ class GoodnightSleepManagerPlugin(
             self._save_sleep_state()
         else:
             self._clear_sleep_state_storage()
+        await self._restart_natural_wake_task()
         await self._restart_idle_sleep_task()
         self.ctx.logger.info("晚安睡眠管理配置已更新")
 
