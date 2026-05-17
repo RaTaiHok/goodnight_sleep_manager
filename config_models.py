@@ -1,13 +1,15 @@
 """晚安睡眠管理插件配置模型"""
 
-from typing import List
+from typing import Any, List
 
 from maibot_sdk import Field, PluginConfigBase
+from pydantic import field_validator
 
 from .defaults import (
     default_directed_patterns,
     default_goodnight_patterns,
     default_pending_goodnight_patterns,
+    default_sleep_related_keywords_text,
     default_sleep_request_patterns,
 )
 
@@ -20,7 +22,7 @@ class PluginSectionConfig(PluginConfigBase):
     __ui_order__ = 0
 
     enabled: bool = Field(default=True, description="是否启用晚安睡眠管理")
-    config_version: str = Field(default="1.8.0", description="配置版本")
+    config_version: str = Field(default="1.9.1", description="配置版本")
 
 
 class TriggerConfig(PluginConfigBase):
@@ -36,6 +38,15 @@ class TriggerConfig(PluginConfigBase):
     )
     ai_confirmation_enabled: bool = Field(default=True, description="使用 AI 判断 Bot 是否确认自己要睡")
     ai_confirmation_log_enabled: bool = Field(default=True, description="输出 AI 入睡判定的详细日志")
+    ai_confirmation_keywords: str = Field(
+        default_factory=default_sleep_related_keywords_text,
+        description="命中这些逗号分隔关键词时会调用 AI 入睡判定；开启判定全部短句时不依赖关键词",
+        json_schema_extra={"x-widget": "textarea", "rows": 2},
+    )
+    ai_confirmation_check_all_short_text: bool = Field(
+        default=False,
+        description="对所有短出站消息调用 AI 入睡判定，不要求先命中睡眠关键词",
+    )
     ai_confirmation_timeout_seconds: int = Field(
         default=0,
         description="AI 入睡确认判定的超时时间，单位秒；0 表示插件内部不主动超时",
@@ -52,6 +63,17 @@ class TriggerConfig(PluginConfigBase):
     max_trigger_chars: int = Field(default=18, description="触发短句的最大长度，过长文本不会触发")
     reject_at_component: bool = Field(default=True, description="出站消息包含 @ 组件时不触发睡眠")
     reject_reply_message: bool = Field(default=True, description="出站消息是引用回复时不触发睡眠")
+
+    @field_validator("ai_confirmation_keywords", mode="before")
+    @classmethod
+    def _coerce_ai_confirmation_keywords(cls, value: Any) -> str:
+        """兼容旧版列表形式的 AI 判定触发关键词"""
+
+        if isinstance(value, list):
+            return ", ".join(str(item).strip() for item in value if str(item).strip())
+        if value is None:
+            return default_sleep_related_keywords_text()
+        return str(value)
 
 
 class SleepRequestConfig(PluginConfigBase):

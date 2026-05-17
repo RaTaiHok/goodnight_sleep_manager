@@ -19,6 +19,32 @@ def default_pending_goodnight_patterns() -> List[str]:
     ]
 
 
+def default_sleep_related_keywords() -> List[str]:
+    """返回默认的 AI 入睡判定触发关键词"""
+
+    return [
+        "睡",
+        "休息",
+        "晚安",
+        "安安",
+        "困",
+        "下线",
+        "关机",
+        "休眠",
+        "躺",
+        "床",
+        "被窝",
+        "闭眼",
+        "熄灯",
+    ]
+
+
+def default_sleep_related_keywords_text() -> str:
+    """返回默认的 AI 入睡判定触发关键词文本"""
+
+    return ", ".join(default_sleep_related_keywords())
+
+
 def default_directed_patterns() -> List[str]:
     """返回默认的“像是在对别人说晚安”的排除规则"""
 

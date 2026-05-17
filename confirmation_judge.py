@@ -1,6 +1,6 @@
 """使用 LLM 判断 Bot 出站消息是否是在确认自己要睡觉"""
 
-from typing import Any
+from typing import Any, Sequence
 
 import asyncio
 import re
@@ -12,7 +12,25 @@ SLEEP_DECISION = "SLEEP"
 NOT_SLEEP_DECISION = "NOT_SLEEP"
 UNSURE_DECISION = "UNSURE"
 
-_SLEEP_RELATED_KEYWORDS = ("睡", "休息", "晚安", "安安", "困", "下线")
+
+def parse_sleep_related_keywords(sleep_related_keywords: str | Sequence[str] | None) -> list[str]:
+    """解析 AI 入睡判定触发关键词"""
+
+    if sleep_related_keywords is None:
+        return []
+    if isinstance(sleep_related_keywords, str):
+        raw_keywords = sleep_related_keywords.replace("，", ",").split(",")
+    else:
+        raw_keywords = sleep_related_keywords
+
+    normalized_keywords: list[str] = []
+    for keyword in raw_keywords:
+        if not isinstance(keyword, str):
+            continue
+        normalized_keyword = normalize_text(keyword)
+        if normalized_keyword:
+            normalized_keywords.append(normalized_keyword)
+    return normalized_keywords
 
 
 def _normalize_decision(raw_text: str) -> str:
@@ -29,7 +47,12 @@ def _normalize_decision(raw_text: str) -> str:
     return UNSURE_DECISION
 
 
-def should_run_sleep_confirmation_judge(text: str, *, has_pending_request: bool) -> bool:
+def should_run_sleep_confirmation_judge(
+    text: str,
+    *,
+    has_pending_request: bool,
+    sleep_related_keywords: str | Sequence[str] | None = None,
+) -> bool:
     """判断是否值得额外调用一次 AI 入睡确认判定"""
 
     normalized_text = normalize_text(text)
@@ -37,7 +60,8 @@ def should_run_sleep_confirmation_judge(text: str, *, has_pending_request: bool)
         return False
     if has_pending_request:
         return True
-    return any(keyword in normalized_text for keyword in _SLEEP_RELATED_KEYWORDS)
+    normalized_keywords = parse_sleep_related_keywords(sleep_related_keywords)
+    return any(keyword in normalized_text for keyword in normalized_keywords)
 
 
 async def judge_sleep_confirmation(
@@ -77,10 +101,11 @@ async def judge_sleep_confirmation(
                 f"Bot 出站回复：{normalized_message}\n\n"
                 "判定规则：\n"
                 "1. 如果 Bot 明确表示自己要睡、去休息、这次真的去睡、先睡了，或对群体做晚安收尾，返回 SLEEP。\n"
-                "2. 如果 Bot 只是回应别人、祝别人晚安、叫别人早点休息、安慰别人，但没有表达自己要睡，返回 NOT_SLEEP。\n"
-                "3. 如果 Bot 在拒绝睡觉、继续聊天、转移话题、开玩笑，或含义不清，返回 NOT_SLEEP 或 UNSURE。\n"
-                "4. 如果没有合理催睡 pending，要更保守：只有明确自我入睡或群体收尾晚安才返回 SLEEP。\n"
-                "5. 只输出一个词：SLEEP、NOT_SLEEP、UNSURE。"
+                "2. 如果 Bot 表示自己已经躺床上、上床、钻被窝、闭眼、熄灯、关机、下线休息，也返回 SLEEP。\n"
+                "3. 如果 Bot 只是回应别人、祝别人晚安、叫别人早点休息、安慰别人，但没有表达自己要睡，返回 NOT_SLEEP。\n"
+                "4. 如果 Bot 在拒绝睡觉、继续聊天、转移话题、开玩笑，或含义不清，返回 NOT_SLEEP 或 UNSURE。\n"
+                "5. 如果没有合理催睡 pending，要更保守：只有明确自我入睡或群体收尾晚安才返回 SLEEP。\n"
+                "6. 只输出一个词：SLEEP、NOT_SLEEP、UNSURE。"
             ),
         },
     ]

@@ -46,6 +46,14 @@ FIELD_LABELS: dict[tuple[str, str], LocalizedText] = {
     ("plugin", "config_version"): {"zh_CN": "配置版本", "en_US": "Config version"},
     ("trigger", "ai_confirmation_enabled"): {"zh_CN": "AI 语义入睡判定", "en_US": "AI semantic sleep judge"},
     ("trigger", "ai_confirmation_log_enabled"): {"zh_CN": "显示 AI 入睡判定日志", "en_US": "Show AI sleep judge logs"},
+    ("trigger", "ai_confirmation_keywords"): {
+        "zh_CN": "AI 判定触发关键词",
+        "en_US": "AI judge trigger keywords",
+    },
+    ("trigger", "ai_confirmation_check_all_short_text"): {
+        "zh_CN": "AI 判定全部短句",
+        "en_US": "AI judge all short texts",
+    },
     ("trigger", "ai_confirmation_timeout_seconds"): {"zh_CN": "AI 入睡判定超时秒", "en_US": "AI sleep judge timeout"},
     ("trigger", "ai_confirmation_max_tokens"): {"zh_CN": "AI 入睡判定输出上限", "en_US": "AI sleep judge max tokens"},
     ("trigger", "max_trigger_chars"): {"zh_CN": "触发短句最大长度", "en_US": "Max trigger length"},
@@ -126,6 +134,14 @@ FIELD_HINTS: dict[tuple[str, str], LocalizedText] = {
     ("trigger", "ai_confirmation_log_enabled"): {
         "zh_CN": "开启后会记录入睡判定跳过原因、AI 判定开始/结果/耗时，以及正则兜底结果",
         "en_US": "When enabled, logs sleep-judge skip reasons, AI judge start/result/duration, and regex fallback results.",
+    },
+    ("trigger", "ai_confirmation_keywords"): {
+        "zh_CN": "没有待确认催睡时，Bot 出站短句命中任一关键词才会调用 AI 入睡判定。使用英文逗号或中文逗号分隔；开启“AI 判定全部短句”后不依赖这里的关键词",
+        "en_US": "Without a pending sleep request, the AI judge runs only when an outbound short text contains one of these comma-separated keywords. This is ignored when AI judge all short texts is enabled.",
+    },
+    ("trigger", "ai_confirmation_check_all_short_text"): {
+        "zh_CN": "默认关闭。开启后，在允许入睡时间内，所有短出站文本都会交给 AI 判定，不再要求先命中睡眠相关关键词；会增加模型调用次数",
+        "en_US": "Disabled by default. When enabled, all short outbound texts during the sleep window are sent to the AI judge without requiring sleep-related keywords first. This increases model calls.",
     },
     ("trigger", "ai_confirmation_timeout_seconds"): {
         "zh_CN": "填 0 时插件内部不主动超时，会等待 LLM 自己返回；填大于 0 的秒数时，超时后按 UNSURE 处理并转入正则兜底。出站检测 Hook 为 120 秒",

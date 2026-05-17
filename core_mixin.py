@@ -841,25 +841,27 @@ class SleepCoreMixin:
                     f"入睡判定跳过: reason=at_component pending={has_pending_request} text={normalized_text}",
                 )
                 return False
-            if self.config.trigger.reject_reply_message and not has_pending_request and (
+            should_reject_reply_message = self.config.trigger.reject_reply_message and not has_pending_request and (
                 set_reply or has_reply_component(message)
-            ):
-                self._log_sleep_confirmation_step(
-                    log_enabled,
-                    f"入睡判定跳过: reason=reply_message pending={has_pending_request} text={normalized_text}",
-                )
-                return False
-
-            should_run_ai_judge = self.config.trigger.ai_confirmation_enabled and should_run_sleep_confirmation_judge(
+            )
+            sleep_related = should_run_sleep_confirmation_judge(
                 normalized_text,
                 has_pending_request=has_pending_request,
+                sleep_related_keywords=self.config.trigger.ai_confirmation_keywords,
+            )
+            check_all_short_text = bool(self.config.trigger.ai_confirmation_check_all_short_text)
+
+            should_run_ai_judge = self.config.trigger.ai_confirmation_enabled and (
+                sleep_related or check_all_short_text
             )
             if should_run_ai_judge:
                 self._log_sleep_confirmation_step(
                     log_enabled,
                     "AI 入睡确认判定开始: "
                     f"pending={has_pending_request} timeout={self.config.trigger.ai_confirmation_timeout_seconds}s "
-                    f"max_tokens={self.config.trigger.ai_confirmation_max_tokens} text={normalized_text}",
+                    f"max_tokens={self.config.trigger.ai_confirmation_max_tokens} "
+                    f"sleep_related={sleep_related} check_all_short_text={check_all_short_text} "
+                    f"reply_message={should_reject_reply_message} text={normalized_text}",
                 )
                 decision = await judge_sleep_confirmation(
                     self.ctx,
@@ -884,9 +886,16 @@ class SleepCoreMixin:
                     log_enabled,
                     "AI 入睡确认判定跳过: "
                     f"enabled={self.config.trigger.ai_confirmation_enabled} pending={has_pending_request} "
-                    f"sleep_related={should_run_sleep_confirmation_judge(normalized_text, has_pending_request=False)} "
+                    f"sleep_related={sleep_related} check_all_short_text={check_all_short_text} "
                     f"text={normalized_text}",
                 )
+
+            if should_reject_reply_message:
+                self._log_sleep_confirmation_step(
+                    log_enabled,
+                    f"入睡判定跳过: reason=reply_message pending={has_pending_request} text={normalized_text}",
+                )
+                return False
 
             fallback_result = self._looks_like_self_goodnight(text, message, set_reply=set_reply)
             self._log_sleep_confirmation_step(
