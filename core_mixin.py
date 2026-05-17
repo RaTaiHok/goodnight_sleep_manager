@@ -102,12 +102,22 @@ class SleepCoreMixin:
 
         target_scope_key = scope_key.strip() or self._sleep_scope_for_message(message)[0]
         record = self._active_sleep_record(scope_key=target_scope_key)
-        self._state.clear_sleep(record.scope_key if record is not None else target_scope_key)
+        if record is not None:
+            self._wake_sleep_record(record, reason)
+            return
+
+        self._state.clear_sleep(target_scope_key)
         self._clear_pending_sleep_request()
         self._save_sleep_state()
-        if record is not None:
-            self._get_logger().info(f"晚安睡眠管理已唤醒: scope={record.scope_label} reason={reason}")
-            self._schedule_sleep_review(record)
+
+    def _wake_sleep_record(self, record: SleepRecord, reason: str) -> None:
+        """清理指定睡眠记录并触发醒来后处理"""
+
+        self._state.clear_sleep(record.scope_key)
+        self._clear_pending_sleep_request()
+        self._save_sleep_state()
+        self._get_logger().info(f"晚安睡眠管理已唤醒: scope={record.scope_label} reason={reason}")
+        self._schedule_sleep_review(record)
 
     def _wake_all_sleep_records(self, reason: str) -> int:
         """清理全部睡眠记录，用于全体强制入睡前消除叠加状态。"""
@@ -631,6 +641,21 @@ class SleepCoreMixin:
             self._expire_sleep_record(record.scope_key, record)
         return None
 
+    def _active_sleep_record_exact(self, scope_key: str) -> SleepRecord | None:
+        """返回指定作用域自身的有效睡眠状态，不回落到全部聊天流"""
+
+        target_scope_key = scope_key.strip()
+        if not target_scope_key:
+            return None
+
+        record = self._state.sleep_records.get(target_scope_key)
+        if record is None:
+            return None
+        if record.sleep_until is not None and datetime.now() < record.sleep_until:
+            return record
+        self._expire_sleep_record(record.scope_key, record)
+        return None
+
     def _prune_expired_sleep_records(self) -> None:
         """清理所有已经到点的睡眠状态"""
 
@@ -1071,7 +1096,7 @@ class SleepCoreMixin:
     def _control_command_names(self) -> set[str]:
         """返回睡眠期间允许穿透入站拦截的控制命令"""
 
-        command_names = {"/sleep_status", "/sleep_wake"}
+        command_names = {"/sleep_status", "/sleep_wake", "/sleep_wakeall"}
         if self.config.control.force_sleep_commands_enabled:
             command_names.update({"/sleep_now", "/sleep_force", "/sleep_forceall"})
         return command_names

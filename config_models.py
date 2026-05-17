@@ -155,7 +155,10 @@ class SleepControlConfig(PluginConfigBase):
     block_memory_automation: bool = Field(default=True, description="睡眠期间暂停自动记忆写回入队")
     block_outbound_messages: bool = Field(default=True, description="睡眠期间拦截后续出站消息")
     planner_control_enabled: bool = Field(default=True, description="睡眠期间清空 Planner 工具并丢弃 Planner 响应")
-    control_commands_enabled: bool = Field(default=True, description="允许 /sleep_status 和 /sleep_wake 控制命令")
+    control_commands_enabled: bool = Field(
+        default=True,
+        description="允许 /sleep_status、/sleep_wake 和 /sleep_wakeall 控制命令",
+    )
     persist_sleep_state: bool = Field(default=True, description="重启后恢复未过期的睡眠状态")
     natural_wake_enabled: bool = Field(default=True, description="到达预计醒来时间后由后台任务自动唤醒")
     force_sleep_commands_enabled: bool = Field(

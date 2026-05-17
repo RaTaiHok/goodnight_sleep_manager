@@ -57,12 +57,40 @@ class SleepCommandHandlersMixin:
         self._allow_control_reply()
         command_message = self._message_stub_for_command(stream_id, group_id)
         scope_key, scope_label = self._sleep_scope_for_message(command_message)
-        sleep_record = self._active_sleep_record(message=command_message)
-        if sleep_record is not None:
-            self._wake("手动唤醒", scope_key=sleep_record.scope_key)
+        all_sleep_record = self._active_sleep_record(scope_key=ALL_SLEEP_SCOPE)
+        sleep_record = self._active_sleep_record_exact(scope_key)
+        if all_sleep_record is not None:
+            message = (
+                "[睡眠管理] 当前处于全部聊天流睡眠\n"
+                f"当前作用域: {scope_label}\n"
+                "需要解除全部聊天流睡眠时，请使用 /sleep_wakeall"
+            )
+        elif sleep_record is not None:
+            self._wake_sleep_record(sleep_record, "手动唤醒")
             message = f"[睡眠管理] 已手动唤醒\n作用域: {sleep_record.scope_label}"
         else:
             message = f"[睡眠管理] 当前本来就是醒着\n作用域: {scope_label}"
+        await self.ctx.send.text(message, stream_id)
+        return True, message, True
+
+    @Command("sleep_wakeall", description="手动唤醒全部聊天流", pattern=r"^/sleep_wakeall$")
+    async def handle_wakeall_command(
+        self,
+        stream_id: str = "",
+        group_id: str = "",
+        **kwargs: Any,
+    ) -> tuple[bool, str, bool]:
+        """手动解除全部睡眠状态"""
+
+        del group_id
+        del kwargs
+
+        self._allow_control_reply()
+        wake_count = self._wake_all_sleep_records("手动全部唤醒")
+        if wake_count:
+            message = f"[睡眠管理] 已手动唤醒全部聊天流\n已解除睡眠作用域: {wake_count} 个"
+        else:
+            message = "[睡眠管理] 当前没有正在生效的睡眠状态"
         await self.ctx.send.text(message, stream_id)
         return True, message, True
 
