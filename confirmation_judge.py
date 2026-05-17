@@ -4,6 +4,7 @@ from typing import Any
 
 import asyncio
 import re
+import time
 
 from .message_utils import normalize_text
 
@@ -49,6 +50,7 @@ async def judge_sleep_confirmation(
     outbound_context: str = "",
     timeout_seconds: int = 4,
     max_tokens: int = 64,
+    log_enabled: bool = True,
 ) -> str:
     """让 LLM 判断当前回复是否表达 Bot 自己要去睡觉"""
 
@@ -85,6 +87,7 @@ async def judge_sleep_confirmation(
 
     safe_timeout_seconds = max(0, int(timeout_seconds or 0))
     safe_max_tokens = max(16, int(max_tokens or 64))
+    started_at = time.perf_counter()
     try:
         generate_task = ctx.llm.generate(prompt, model="replyer", temperature=0.0, max_tokens=safe_max_tokens)
         if safe_timeout_seconds > 0:
@@ -92,12 +95,24 @@ async def judge_sleep_confirmation(
         else:
             result = await generate_task
     except asyncio.TimeoutError:
-        ctx.logger.warning(f"AI 入睡确认判定超时: timeout={safe_timeout_seconds}s")
+        elapsed_seconds = time.perf_counter() - started_at
+        ctx.logger.warning(f"AI 入睡确认判定超时: timeout={safe_timeout_seconds}s elapsed={elapsed_seconds:.2f}s")
         return UNSURE_DECISION
     except Exception as exc:
-        ctx.logger.warning(f"AI 入睡确认判定失败: {exc}")
+        elapsed_seconds = time.perf_counter() - started_at
+        ctx.logger.warning(f"AI 入睡确认判定失败: elapsed={elapsed_seconds:.2f}s error={exc}")
         return UNSURE_DECISION
 
     if not isinstance(result, dict) or not result.get("success", False):
+        elapsed_seconds = time.perf_counter() - started_at
+        if log_enabled:
+            ctx.logger.info(f"AI 入睡确认判定返回失败: elapsed={elapsed_seconds:.2f}s result={result}")
         return UNSURE_DECISION
-    return _normalize_decision(str(result.get("response") or ""))
+    raw_response = str(result.get("response") or "")
+    decision = _normalize_decision(raw_response)
+    elapsed_seconds = time.perf_counter() - started_at
+    if log_enabled:
+        ctx.logger.info(
+            f"AI 入睡确认判定完成: decision={decision} elapsed={elapsed_seconds:.2f}s response={raw_response.strip()}"
+        )
+    return decision

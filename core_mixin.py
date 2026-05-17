@@ -800,21 +800,42 @@ class SleepCoreMixin:
 
         normalized_text = normalize_text(text)
         has_pending_request = self._has_pending_sleep_request(message)
+        log_enabled = bool(self.config.trigger.ai_confirmation_log_enabled)
         try:
             if not normalized_text or len(normalized_text) > 120:
+                self._log_sleep_confirmation_step(
+                    log_enabled,
+                    f"入睡判定跳过: reason={'empty_text' if not normalized_text else 'text_too_long'} "
+                    f"length={len(normalized_text)} pending={has_pending_request}",
+                )
                 return False
 
             if self.config.trigger.reject_at_component and has_at_component(message):
+                self._log_sleep_confirmation_step(
+                    log_enabled,
+                    f"入睡判定跳过: reason=at_component pending={has_pending_request} text={normalized_text}",
+                )
                 return False
             if self.config.trigger.reject_reply_message and not has_pending_request and (
                 set_reply or has_reply_component(message)
             ):
+                self._log_sleep_confirmation_step(
+                    log_enabled,
+                    f"入睡判定跳过: reason=reply_message pending={has_pending_request} text={normalized_text}",
+                )
                 return False
 
-            if self.config.trigger.ai_confirmation_enabled and should_run_sleep_confirmation_judge(
+            should_run_ai_judge = self.config.trigger.ai_confirmation_enabled and should_run_sleep_confirmation_judge(
                 normalized_text,
                 has_pending_request=has_pending_request,
-            ):
+            )
+            if should_run_ai_judge:
+                self._log_sleep_confirmation_step(
+                    log_enabled,
+                    "AI 入睡确认判定开始: "
+                    f"pending={has_pending_request} timeout={self.config.trigger.ai_confirmation_timeout_seconds}s "
+                    f"max_tokens={self.config.trigger.ai_confirmation_max_tokens} text={normalized_text}",
+                )
                 decision = await judge_sleep_confirmation(
                     self.ctx,
                     bot_message=normalized_text,
@@ -824,6 +845,7 @@ class SleepCoreMixin:
                     outbound_context=self._build_sleep_confirmation_outbound_context(message, set_reply=set_reply),
                     timeout_seconds=self.config.trigger.ai_confirmation_timeout_seconds,
                     max_tokens=self.config.trigger.ai_confirmation_max_tokens,
+                    log_enabled=log_enabled,
                 )
                 if decision == SLEEP_DECISION:
                     self._get_logger().info(f"AI 入睡确认判定触发: text={normalized_text}")
@@ -832,12 +854,31 @@ class SleepCoreMixin:
                     self._get_logger().info(f"AI 入睡确认判定否定: text={normalized_text}")
                     return False
                 self._get_logger().info(f"AI 入睡确认判定不确定，转入正则兜底: decision={decision} text={normalized_text}")
+            else:
+                self._log_sleep_confirmation_step(
+                    log_enabled,
+                    "AI 入睡确认判定跳过: "
+                    f"enabled={self.config.trigger.ai_confirmation_enabled} pending={has_pending_request} "
+                    f"sleep_related={should_run_sleep_confirmation_judge(normalized_text, has_pending_request=False)} "
+                    f"text={normalized_text}",
+                )
 
-            return self._looks_like_self_goodnight(text, message, set_reply=set_reply)
+            fallback_result = self._looks_like_self_goodnight(text, message, set_reply=set_reply)
+            self._log_sleep_confirmation_step(
+                log_enabled,
+                f"正则入睡兜底判定完成: matched={fallback_result} pending={has_pending_request} text={normalized_text}",
+            )
+            return fallback_result
         finally:
             if has_pending_request:
                 self._get_logger().info(f"用户催睡待确认状态已消费: text={normalized_text or '<empty>'}")
                 self._clear_pending_sleep_request()
+
+    def _log_sleep_confirmation_step(self, enabled: bool, message: str) -> None:
+        """按配置输出入睡判定过程日志"""
+
+        if enabled:
+            self._get_logger().info(message)
 
     def _looks_like_sleep_request(self, text: str, message: dict[str, Any]) -> bool:
         """判断用户消息是否像是在让 Bot 睡觉"""

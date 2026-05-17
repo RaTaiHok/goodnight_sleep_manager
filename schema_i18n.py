@@ -45,6 +45,7 @@ FIELD_LABELS: dict[tuple[str, str], LocalizedText] = {
     ("plugin", "enabled"): {"zh_CN": "启用插件", "en_US": "Enable plugin"},
     ("plugin", "config_version"): {"zh_CN": "配置版本", "en_US": "Config version"},
     ("trigger", "ai_confirmation_enabled"): {"zh_CN": "AI 语义入睡判定", "en_US": "AI semantic sleep judge"},
+    ("trigger", "ai_confirmation_log_enabled"): {"zh_CN": "显示 AI 入睡判定日志", "en_US": "Show AI sleep judge logs"},
     ("trigger", "ai_confirmation_timeout_seconds"): {"zh_CN": "AI 入睡判定超时秒", "en_US": "AI sleep judge timeout"},
     ("trigger", "ai_confirmation_max_tokens"): {"zh_CN": "AI 入睡判定输出上限", "en_US": "AI sleep judge max tokens"},
     ("trigger", "max_trigger_chars"): {"zh_CN": "触发短句最大长度", "en_US": "Max trigger length"},
@@ -121,6 +122,10 @@ FIELD_HINTS: dict[tuple[str, str], LocalizedText] = {
     ("trigger", "ai_confirmation_enabled"): {
         "zh_CN": "开启后，在允许入睡时间内，对已有合理催睡或 Bot 自己发出含睡眠意图的短句调用 replyer 模型，只接受 SLEEP/NOT_SLEEP/UNSURE",
         "en_US": "When enabled, during the sleep window, use the replyer model for pending sleep requests or sleep-related bot messages, accepting only SLEEP/NOT_SLEEP/UNSURE.",
+    },
+    ("trigger", "ai_confirmation_log_enabled"): {
+        "zh_CN": "开启后会记录入睡判定跳过原因、AI 判定开始/结果/耗时，以及正则兜底结果",
+        "en_US": "When enabled, logs sleep-judge skip reasons, AI judge start/result/duration, and regex fallback results.",
     },
     ("trigger", "ai_confirmation_timeout_seconds"): {
         "zh_CN": "填 0 时插件内部不主动超时，会等待 LLM 自己返回；填大于 0 的秒数时，超时后按 UNSURE 处理并转入正则兜底。出站检测 Hook 为 120 秒",

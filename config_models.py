@@ -35,6 +35,7 @@ class TriggerConfig(PluginConfigBase):
         description="Bot 出站消息命中这些规则时，可以进入睡眠",
     )
     ai_confirmation_enabled: bool = Field(default=True, description="使用 AI 判断 Bot 是否确认自己要睡")
+    ai_confirmation_log_enabled: bool = Field(default=True, description="输出 AI 入睡判定的详细日志")
     ai_confirmation_timeout_seconds: int = Field(
         default=0,
         description="AI 入睡确认判定的超时时间，单位秒；0 表示插件内部不主动超时",
