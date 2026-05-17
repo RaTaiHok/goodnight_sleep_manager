@@ -22,7 +22,7 @@ class PluginSectionConfig(PluginConfigBase):
     __ui_order__ = 0
 
     enabled: bool = Field(default=True, description="是否启用晚安睡眠管理")
-    config_version: str = Field(default="1.9.1", description="配置版本")
+    config_version: str = Field(default="1.9.2", description="配置版本")
 
 
 class TriggerConfig(PluginConfigBase):
@@ -51,7 +51,7 @@ class TriggerConfig(PluginConfigBase):
         default=0,
         description="AI 入睡确认判定的超时时间，单位秒；0 表示插件内部不主动超时",
     )
-    ai_confirmation_max_tokens: int = Field(default=64, description="AI 入睡确认判定的最大输出 token 数")
+    ai_confirmation_max_tokens: int = Field(default=256, description="AI 入睡确认判定的最大输出 token 数")
     pending_goodnight_patterns: List[str] = Field(
         default_factory=default_pending_goodnight_patterns,
         description="有人在合适时间催睡后，Bot 出站消息命中这些规则也会进入睡眠",

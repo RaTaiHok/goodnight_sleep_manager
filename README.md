@@ -35,6 +35,8 @@ AI 判定只会在允许入睡时间内触发：
 
 AI 入睡判定运行在插件的出站消息 Hook 中，不属于 Maisaka Planner 思考链，所以不会出现在 Planner HTML。需要查看判定过程时，开启“显示 AI 入睡判定日志”，日志会记录跳过原因、AI 判定开始、结果、耗时和正则兜底结果。
 
+AI 判定模板会在插件加载时同步到主程序 Prompt 目录，并注册到主程序 PromptManager，文件名为 `goodnight_sleep_confirmation.prompt`。可以在 WebUI 的 Prompt 页面修改它；保存后的自定义内容会优先生效。
+
 ## 睡眠状态
 
 睡眠状态默认保存到：
@@ -149,6 +151,10 @@ goodnight_sleep_manager/
 ├─ sleep_review.py         睡醒回顾记录和总结
 ├─ reply_generator.py      非入睡时间催睡回复生成
 ├─ defaults.py             默认规则和配置数据
+├─ prompts/                可同步到主程序 Prompt 页面的默认模板
+│  └─ zh-CN/
+│     ├─ goodnight_sleep_confirmation.prompt
+│     └─ goodnight_sleep_confirmation.meta.toml
 ├─ i18n/                   插件基础国际化文本
 ├─ README.md               使用说明
 └─ LICENSE                 开源许可证

@@ -148,8 +148,8 @@ FIELD_HINTS: dict[tuple[str, str], LocalizedText] = {
         "en_US": "Set to 0 to avoid plugin-side timeout and wait for the LLM result. Values greater than 0 are treated as seconds; timeout returns UNSURE and falls back to regex. The outbound detector hook timeout is 120 seconds.",
     },
     ("trigger", "ai_confirmation_max_tokens"): {
-        "zh_CN": "默认 64。过低可能导致部分模型在输出 SLEEP/NOT_SLEEP/UNSURE 前被截断并返回空内容；建议保持 64 或更高",
-        "en_US": "Default is 64. Too low may truncate some models before they output SLEEP/NOT_SLEEP/UNSURE and cause empty responses; keep 64 or higher.",
+        "zh_CN": "默认 256。过低可能导致部分模型在输出 SLEEP/NOT_SLEEP/UNSURE 前被截断并返回空内容；建议保持 256 或更高",
+        "en_US": "Default is 256. Too low may truncate some models before they output SLEEP/NOT_SLEEP/UNSURE and cause empty responses; keep 256 or higher.",
     },
     ("group_schedule", "group_schedules"): {
         "zh_CN": "同一群号命中后使用这里的作息和睡眠时长，并拥有独立睡眠状态，不受全局睡眠影响",

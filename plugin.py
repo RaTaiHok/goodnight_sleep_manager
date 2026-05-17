@@ -4,6 +4,7 @@ from maibot_sdk import MaiBotPlugin
 
 from .command_handlers import SleepCommandHandlersMixin
 from .config_models import GoodnightSleepManagerConfig
+from .confirmation_judge import ensure_sleep_confirmation_prompt_files
 from .core_mixin import SleepCoreMixin
 from .hook_handlers import SleepHookHandlersMixin
 from .schema_i18n import apply_config_schema_i18n
@@ -28,6 +29,7 @@ class GoodnightSleepManagerPlugin(
     async def on_load(self) -> None:
         """插件加载时输出当前状态"""
 
+        ensure_sleep_confirmation_prompt_files(self.ctx.logger)
         self._restore_sleep_state()
         self._start_natural_wake_task()
         self._start_idle_sleep_task()
